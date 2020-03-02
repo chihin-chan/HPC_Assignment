@@ -1,19 +1,14 @@
-CC=mpicxx
-CXXFLAGS=-Wall -O0 -pedantic
-LDLIBS=-llapack -lblas -lboost_program_options
-OBJS = LidDrivenCavitySolver.o
-TARGET=LidDrivenCavity
-HDRS=LidDrivenCavity.h
+.PHONY: clean
+default: myprog
 
-default: $(TARGET)
-all: $(TARGET)
+LidDrivenCavitySolver.o: LidDrivenCavitySolver.cpp
+	mpicxx -o LidDrivenCavitySolver.o -c LidDrivenCavitySolver.cpp -llapack -lblas -lboost_program_options
 
-$(TARGET): $(TARGET).o $(OBJS)
+LidDrivenCavity.o: LidDrivenCavity.cpp LidDrivenCavity.h
+	mpicxx -o LidDrivenCavity.o -c LidDrivenCavity.cpp -llapack -lblas -lboost_program_options
 
-.PHONY: clean doc
-
-doc:
-	doxygen Doxyfile
+myprog: LidDrivenCavity.o LidDrivenCavitySolver.o
+	mpicxx -o myprog LidDrivenCavity.o LidDrivenCavitySolver.o -llapack -lblas -lboost_program_options
 
 clean:
-	rm -rf $(TARGET) *.o html latex
+	rm -f *.o myprog
