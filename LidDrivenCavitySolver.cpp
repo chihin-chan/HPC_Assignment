@@ -28,10 +28,17 @@ int main(int argc, char **argv)
     	cout << desc << "\n";
     	return 1;
 	}
-/*
+	
+
     // Create a new instance of the LidDrivenCavity class
     LidDrivenCavity* solver = new LidDrivenCavity();
 
+	solver.SetDomainSize(vm["Lx"].as<double>(), vm["Ly"].as<double>());
+	solver.SetGridSize(vm["Nx"].as<int>(), vm["Ny"].as<int>());
+	solver.SetTimeStep(vm["dt"].as<double>());
+	solver.SetFinalTime(vm["T"].as<int>());
+	
+	/*
     // Configure the solver here...
     // ...
     solver->Initialise();
