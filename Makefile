@@ -1,7 +1,7 @@
 CC=mpicxx
 CXXFLAGS=-Wall -O0 -pedantic
-LDLIBS=-llapack -lblas
-OBJS = LidDrivenCavitySolver
+LDLIBS=-llapack -lblas -lboost_program_options
+OBJS = LidDrivenCavitySolver.o
 TARGET=LidDrivenCavity
 HDRS=LidDrivenCavity.h
 
