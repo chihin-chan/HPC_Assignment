@@ -3,7 +3,7 @@
 using namespace std;
 namespace po = boost::program_options;
 #include "LidDrivenCavity.h"
-//#include <mpi.h>
+#include <mpi.h>
 
 int main(int argc, char **argv)
 {	
