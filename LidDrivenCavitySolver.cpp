@@ -3,7 +3,7 @@
 using namespace std;
 namespace po = boost::program_options;
 #include "LidDrivenCavity.h"
-#include <mpi.h>
+//#include <mpi.h>
 
 int main(int argc, char **argv)
 {	
@@ -30,13 +30,13 @@ int main(int argc, char **argv)
 	}
 	
 
-    // Create a new instance of the LidDrivenCavity class
-    LidDrivenCavity* solver = new LidDrivenCavity();
+    	// Create a new instance of the LidDrivenCavity class
+    	LidDrivenCavity* solver = new LidDrivenCavity();
 
-	solver.SetDomainSize(vm["Lx"].as<double>(), vm["Ly"].as<double>());
-	solver.SetGridSize(vm["Nx"].as<int>(), vm["Ny"].as<int>());
-	solver.SetTimeStep(vm["dt"].as<double>());
-	solver.SetFinalTime(vm["T"].as<int>());
+	solver->SetDomainSize(vm["Lx"].as<double>(), vm["Ly"].as<double>());
+	solver->SetGridSize(vm["Nx"].as<int>(), vm["Ny"].as<int>());
+	solver->SetTimeStep(vm["dt"].as<double>());
+	solver->SetFinalTime(vm["T"].as<int>());
 	
 	/*
     // Configure the solver here...
