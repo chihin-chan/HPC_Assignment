@@ -23,6 +23,8 @@ public:
 private:
     double* v = nullptr;
     double* s = nullptr;
+    double* v_new = nullptr;
+    double* s_new = nullptr;
 
     double dt;
     double T;

@@ -37,14 +37,13 @@ int main(int argc, char **argv)
 	solver->SetGridSize(vm["Nx"].as<int>(), vm["Ny"].as<int>());
 	solver->SetTimeStep(vm["dt"].as<double>());
 	solver->SetFinalTime(vm["T"].as<int>());
-	
-	/*
-    // Configure the solver here...
-    // ...
-    solver->Initialise();
 
-    // Run the solver
-    solver->Integrate();
-*/
+    	// Configure the solver here...
+    
+	solver->Initialise();
+
+    	// Run the solver
+    	solver->Integrate();
+
 	return 0;
 }
