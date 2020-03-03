@@ -17,7 +17,7 @@ int main(int argc, char **argv)
 		("Px", po::value<int>(), "Number of partitions in the x-direction (parallel)")
 		("Py", po::value<int>(), "Numer of partitions in the y-direction (parallel)")
 		("dt", po::value<double>(), "Time step size")
-		("T", po::value<int>(), "Final Time")
+		("T", po::value<double>(), "Final Time")
 		("Re", po::value<double>(), "Reynolds Number");
 	
 	po::variables_map vm;
@@ -36,7 +36,7 @@ int main(int argc, char **argv)
 	solver->SetDomainSize(vm["Lx"].as<double>(), vm["Ly"].as<double>());
 	solver->SetGridSize(vm["Nx"].as<int>(), vm["Ny"].as<int>());
 	solver->SetTimeStep(vm["dt"].as<double>());
-	solver->SetFinalTime(vm["T"].as<int>());
+	solver->SetFinalTime(vm["T"].as<double>());
 
     	// Configure the solver here...
     
