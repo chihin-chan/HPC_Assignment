@@ -2,12 +2,16 @@ clc
 clear all
 close all
 
-A = importdata('streamfunction.txt');
-x = reshape(A.data(:,1), [161,161]);
-y = reshape(A.data(:,2), [161,161]);
-s = reshape(A.data(:,3), [161,161]);
+Nx = 81;
+Ny = 81;
 
-contourf(x,y,s,10);
+A = importdata('streamfunction.txt');
+x = reshape(A.data(:,1), [Nx,Ny]);
+y = reshape(A.data(:,2), [Nx,Ny]);
+s = reshape(A.data(:,3), [Nx,Ny]);
+
+contourf(x,y,s,20);
+pbaspect([max(max(x)) max(max(y)) 1]);
 
 
 

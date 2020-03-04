@@ -68,6 +68,8 @@ void LidDrivenCavity::MatPrint(double *x, int n)
 
 void LidDrivenCavity::Initialise()
 {	
+	dx = double(Lx) / double((Nx-1.0));
+	dy = double(Ly) / double((Ny-1.0));
 	v = new double[Nx*Ny];
 	s = new double[Nx*Ny];
 	v_new  = new double[Nx*Ny];
@@ -77,15 +79,14 @@ void LidDrivenCavity::Initialise()
 	memset(s, 0.0, Nx*Ny*sizeof(double));	
 	memset(v_new, 0.0, Nx*Ny*sizeof(double));	
 	memset(s_new, 0.0, Nx*Ny*sizeof(double));
-	
+	// Initialising PS
+	Solver = PoissonSolver(Nx,Ny,dx,dy);	
 	cout << endl << endl <<"Initialising solution..." << endl << endl;
 	
 }
 
 void LidDrivenCavity::Integrate()
 {
-	double dx = double(Lx) / double((Nx-1.0));
-	double dy = double(Ly) / double((Ny-1.0));
 	double U = 1.0;
 	double t_elapse = 0.0;
 
@@ -118,7 +119,8 @@ void LidDrivenCavity::Integrate()
 		", is too large and should be lesser than: " << cond << endl;
 	      return;	      
 	}
-
+	
+	// Move the initialising to poisson solver contructor
 	// Generating Banded Matrix in column format for Possion Solve
 	// Initialising a_banded to all zeros
 	for(unsigned int i=0; i<k; i++){
@@ -200,7 +202,8 @@ void LidDrivenCavity::Integrate()
 				rhs[i+j*(Nx-2)] = v_new[(i+1)+(j+1)*Nx];
 			}
 		}
-		
+
+		// Call Solver.solve
 		// Solving Using Forward Substitution
 		F77NAME(dpbtrs) ('U', internal_nodes, ku, 1, a_banded, ku+1, rhs, internal_nodes, info);
 		// Mapping Solution to Global Vector
@@ -210,17 +213,18 @@ void LidDrivenCavity::Integrate()
 
 			}
 		}
-	// Calculating 2-norm of solution difference
-	norm = 0.0;
-	for(unsigned int i = 0 ; i<Nx*Ny; i++){
-		norm += (s_new[i] - s[i])*(s_new[i]-s[i]);
-	}
-	cout << "Info: " << info << endl;
-	cout << "2-Norm: " << sqrt(norm) << endl;
-	// Copying streamfunction at n+1 back into n for next time iteration 
-	cblas_dcopy(Nx*Ny, s_new, 1, s, 1);
-	t_elapse+= dt;
-	cout << "Time elapsed: " << t_elapse<< endl<< endl;
+		// Calculating 2-norm of solution difference
+		norm = 0.0;
+		for(unsigned int i = 0 ; i<Nx*Ny; i++){
+			norm += (s_new[i] - s[i])*(s_new[i]-s[i]);
+		}
+		MatPrint(s, Nx);
+		cout << "Info: " << info << endl;
+		cout << "2-Norm: " << sqrt(norm) << endl;
+		// Copying streamfunction at n+1 back into n for next time iteration 
+		cblas_dcopy(Nx*Ny, s_new, 1, s, 1);
+		t_elapse+= dt;
+		cout << "Time elapsed: " << t_elapse<< endl<< endl;
 	}
 }
 

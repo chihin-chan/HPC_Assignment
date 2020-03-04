@@ -26,7 +26,9 @@ private:
     double* s = nullptr;
     double* v_new = nullptr;
     double* s_new = nullptr;
-
+    
+    PoissonSolver Solver;
+    
     double dt;
     double T;
     int    Nx;
@@ -34,5 +36,7 @@ private:
     double Lx;
     double Ly;
     double Re;
+    double dx;
+    double dy;
 };
 

@@ -203,6 +203,7 @@ void LidDrivenCavity::Integrate()
 		
 		// Solving Using Forward Substitution
 		F77NAME(dpbtrs) ('U', internal_nodes, ku, 1, a_banded, ku+1, rhs, internal_nodes, info);
+
 		// Mapping Solution to Global Vector
 		for(unsigned int j = 0; j<Ny-2; j++){
 			for(unsigned int i = 0; i<Nx-2; i++){
