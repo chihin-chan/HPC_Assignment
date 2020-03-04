@@ -7,11 +7,13 @@
 #include <iomanip>
 #define F77NAME(x) x##_
 extern "C" {
-	void F77NAME(dpbtrf) (const char& UPLO, const int& n, const int& kd,
-		       	      const double* ab, const int& LDAB, int& info);
-	void F77NAME(dpbtrs) (const char& UPLO, const int& n, const int KD,
-			      const int nrhs, const double* AB, const int ldab,
-			      const double* b, const int ldb, int& info);
+	void F77NAME(dpbsv) (const char& UPLO, const int& n, const int& kd,
+		       	     const int& nrhs, const double* AB,
+			     const int& LDAB, const double* b, const int& LDB, int& info);
+	void F77NAME(dgbtrs) (const char& trans, const int& n, const int& kl,
+			      const int& ku, const int& nrhs, const double* A, const int& lda, 
+			      const int* ipiv, double* b,
+			      const int& ldb, int& info);
 }
 
 using namespace std;
@@ -96,7 +98,8 @@ void LidDrivenCavity::Integrate()
 	double alpha = 2.0*(1.0/dx/dx + 1.0/dy/dy); // Coefficients of i,j
 	double beta_x = -1/dx/dx;		// Coefficients of i+/-1, j
 	double beta_y = -1/dy/dy;		// Coefficients of i/, j+/-1
-	double norm;				// Storing 2-norm of solution difference
+	double norm;				// Storing 2-norm of solution differencei
+	int* piv = new int[internal_nodes];
 	int info;
 	int count;
 	
@@ -104,9 +107,6 @@ void LidDrivenCavity::Integrate()
 	double* a_banded = new double[k];
 	// rhs stores vector b for Ax = b
 	double* rhs = new double[internal_nodes];
-	for(int i = 0; i< internal_nodes; i++){
-		rhs[i] = 0.0;
-	}
 
 	// Try and Catch if dt is too large
 	double cond = Re*Lx/(Nx-1)*Ly/(Ny-1) / 4;
@@ -119,52 +119,7 @@ void LidDrivenCavity::Integrate()
 	      return;	      
 	}
 
-	// Generating Banded Matrix in column format for Possion Solve
-	// Initialising a_banded to all zeros
-	for(unsigned int i=0; i<k; i++){
-		a_banded[i] = 0.0;
-	}
-	// Filling Bottom and Bottom +1 rows with alpha and beta_x
-	a_banded[ku] = alpha;
-	count = 1;
-	for(unsigned int i=ku+(ku+1); i<k; i+=(Nx-1)){
-		a_banded[i] = alpha;
-		if (count%(Nx-2) != 0){
-			a_banded[i-1] = beta_x;
-		}
-		else{
-			a_banded[i-1] = 0;
-		}
-		count++;
-	}
 
-	// Filling Top Row of Banded Matrix with beta_y
-	for(unsigned int i=ku*(ku+1); i<k; i+=(Nx-1)){
-		a_banded[i] = beta_y;
-	}
-/*	
-	// Printing A_banded for checking
-	for(unsigned int i = 0; i < (ku+1) ; i++){
-		for(unsigned int j = 0; j < internal_nodes; j++){
-			cout << a_banded[i+j*(ku+1)] << " ";
-		}
-		cout << endl;
-	}
-*/
-	
-	// Caching Cholesky factorisation
-	F77NAME(dpbtrf) ('u', internal_nodes, ku, a_banded, ku+1, info);	
-
-	
-	// Printing A_banded for checking
-	for(unsigned int i = 0; i < (ku+1) ; i++){
-		for(unsigned int j = 0; j < internal_nodes; j++){
-			cout << a_banded[i+j*(ku+1)] << " ";
-		}
-		cout << endl;
-	}
-
-	
 	// Starting time loop
 	while (t_elapse < T){
 		
@@ -211,9 +166,42 @@ void LidDrivenCavity::Integrate()
 				rhs[i+j*(Nx-2)] = v_new[(i+1)+(j+1)*Nx];
 			}
 		}
+		// Generating Banded Matrix in column format for Possion Solve
+		// Initialising a_banded to all zeros
+		for(unsigned int i=0; i<k; i++){
+			a_banded[i] = 0.0;
+		}
+		// Filling Bottom and Bottom +1 rows with alpha and beta_x
+		a_banded[ku] = alpha;
+		count = 1;
+		for(unsigned int i=ku+(ku+1); i<k; i+=(Nx-1)){
+				a_banded[i] = alpha;
+			if (count%(Nx-2) != 0){
+				a_banded[i-1] = beta_x;
+			}
+		else{
+			a_banded[i-1] = 0;
+		}
+		count++;
+		}
+
+		// Filling Top Row of Banded Matrix with beta_y
+		for(unsigned int i=ku*(ku+1); i<k; i+=(Nx-1)){
+			a_banded[i] = beta_y;
+		}
+/*	
+		// Printing A_banded for checking
+		for(unsigned int i = 0; i < (ku+1) ; i++){
+			for(unsigned int j = 0; j < internal_nodes; j++){
+				cout << a_banded[i+j*(ku+1)] << " ";
+		}
+			cout << endl;
+		}
+*/
+		// Solving system of equations LAPACK
+		F77NAME(dpbsv) ('u', internal_nodes, ku, 1, a_banded, ku+1, rhs, internal_nodes, info);	
+
 		
-		// Solving Using Forward Substitution
-		F77NAME(dpbtrs)('U', internal_nodes, ku, 1, a_banded, ku+1, rhs, internal_nodes, info);
 		// Mapping Solution to Global Vector
 		for(unsigned int j = 0; j<Ny-2; j++){
 			for(unsigned int i = 0; i<Nx-2; i++){
