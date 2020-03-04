@@ -7,7 +7,7 @@
 clc
 clear all
 close all
-
+tic
 nx = 120;
 ny = 120;
 Lx = pi;
@@ -41,4 +41,4 @@ fD = reshape(f,[kx,ky]);
 surf(xx,yy,fD);
 figure;
 surf(xx,yy,solD);
-
+toc

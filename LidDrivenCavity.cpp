@@ -1,4 +1,5 @@
 #include "LidDrivenCavity.h"
+#include "PoissonSolver.h"
 #include <iostream>
 #include <cstring>
 #include <cblas.h>
@@ -79,9 +80,9 @@ void LidDrivenCavity::Initialise()
 	memset(s, 0.0, Nx*Ny*sizeof(double));	
 	memset(v_new, 0.0, Nx*Ny*sizeof(double));	
 	memset(s_new, 0.0, Nx*Ny*sizeof(double));
-	// Initialising PS
-	Solver = PoissonSolver(Nx,Ny,dx,dy);	
-	cout << endl << endl <<"Initialising solution..." << endl << endl;
+	// Initialising Poisson Solver
+	solver(Nx, Ny, dx, dy) ;	
+	cout << endl << endl <<"Initialising Possion Solver..." << endl << endl;
 	
 }
 
@@ -89,25 +90,11 @@ void LidDrivenCavity::Integrate()
 {
 	double U = 1.0;
 	double t_elapse = 0.0;
-
-	// Initialising properties of banded matrix A, to solve Ax = b
-	const int internal_nodes = (Nx-2)*(Ny-2); // Ax = b solved only for internal nodes
-	const int ku = Nx-2;			  // No. of super diagonals
-	const int k = (ku+1)*internal_nodes;	  // Size of banded matrix (ku+kl+1)*N
-	double alpha = 2.0*(1.0/dx/dx + 1.0/dy/dy); // Coefficients of i,j
-	double beta_x = -1/dx/dx;		// Coefficients of i+/-1, j
-	double beta_y = -1/dy/dy;		// Coefficients of i/, j+/-1
-	double norm;				// Storing 2-norm of solution difference
-	int info;
-	int count;
+	double norm;
+    int count;
 	
-	// a_banded holds matrix A in banded format
-	double* a_banded = new double[k];
 	// rhs stores vector b for Ax = b
-	double* rhs = new double[internal_nodes];
-	for(int i = 0; i< internal_nodes; i++){
-		rhs[i] = 0.0;
-	}
+	double* rhs = new double[(Nx-2)*(Ny-2)];
 
 	// Try and Catch if dt is too large
 	double cond = Re*Lx/(Nx-1)*Ly/(Ny-1) / 4;
@@ -119,42 +106,6 @@ void LidDrivenCavity::Integrate()
 		", is too large and should be lesser than: " << cond << endl;
 	      return;	      
 	}
-	
-	// Move the initialising to poisson solver contructor
-	// Generating Banded Matrix in column format for Possion Solve
-	// Initialising a_banded to all zeros
-	for(unsigned int i=0; i<k; i++){
-		a_banded[i] = 0.0;
-	}
-	// Filling Bottom and Bottom +1 rows with alpha and beta_x
-	a_banded[ku] = alpha;
-	count = 1;
-	for(unsigned int i=ku+(ku+1); i<k; i+=(Nx-1)){
-		a_banded[i] = alpha;
-		if (count%(Nx-2) != 0){
-			a_banded[i-1] = beta_x;
-		}
-		else{
-			a_banded[i-1] = 0;
-		}
-		count++;
-	}
-
-	// Filling Top Row of Banded Matrix with beta_y
-	for(unsigned int i=ku*(ku+1); i<k; i+=(Nx-1)){
-		a_banded[i] = beta_y;
-	}
-/*	
-	// Printing A_banded for checking
-	for(unsigned int i = 0; i < (ku+1) ; i++){
-		for(unsigned int j = 0; j < internal_nodes; j++){
-			cout << a_banded[i+j*(ku+1)] << " ";
-		}
-		cout << endl;
-	}
-*/
-	// Caching Cholesky factorisation
-	F77NAME(dpbtrf) ('u', internal_nodes, ku, a_banded, ku+1, info);	
 	
 	// Starting time loop
 	while (t_elapse < T){
@@ -205,7 +156,8 @@ void LidDrivenCavity::Integrate()
 
 		// Call Solver.solve
 		// Solving Using Forward Substitution
-		F77NAME(dpbtrs) ('U', internal_nodes, ku, 1, a_banded, ku+1, rhs, internal_nodes, info);
+		solver.CholSolve(rhs);
+
 		// Mapping Solution to Global Vector
 		for(unsigned int j = 0; j<Ny-2; j++){
 			for(unsigned int i = 0; i<Nx-2; i++){
@@ -218,8 +170,6 @@ void LidDrivenCavity::Integrate()
 		for(unsigned int i = 0 ; i<Nx*Ny; i++){
 			norm += (s_new[i] - s[i])*(s_new[i]-s[i]);
 		}
-		MatPrint(s, Nx);
-		cout << "Info: " << info << endl;
 		cout << "2-Norm: " << sqrt(norm) << endl;
 		// Copying streamfunction at n+1 back into n for next time iteration 
 		cblas_dcopy(Nx*Ny, s_new, 1, s, 1);

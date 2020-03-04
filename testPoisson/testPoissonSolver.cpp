@@ -26,10 +26,7 @@ int main(){
             b[i+j*(nx-2)] = sin((i+1)*dx)*sin((j+1)*dy);
         }
     }
-    for(int i=0; i<(ny-2)*(nx-2);i++){
-        cout << b[i] << endl;
-}
-cout << endl << endl << endl;
+    
     // Call Solver.solve
     ps.CholSolve(b);
     

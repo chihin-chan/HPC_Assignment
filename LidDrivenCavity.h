@@ -1,6 +1,7 @@
 #pragma once
-
 #include <string>
+#include "PoissonSolver.h"
+
 using namespace std;
 
 class LidDrivenCavity
@@ -27,7 +28,7 @@ private:
     double* v_new = nullptr;
     double* s_new = nullptr;
     
-    PoissonSolver Solver;
+    PoissonSolver solver;
     
     double dt;
     double T;
