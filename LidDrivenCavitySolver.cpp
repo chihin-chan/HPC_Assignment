@@ -37,13 +37,16 @@ int main(int argc, char **argv)
 	solver->SetGridSize(vm["Nx"].as<int>(), vm["Ny"].as<int>());
 	solver->SetTimeStep(vm["dt"].as<double>());
 	solver->SetFinalTime(vm["T"].as<double>());
-
+	solver->SetReynoldsNumber(vm["Re"].as<double>());
     	// Configure the solver here...
     
 	solver->Initialise();
 
     	// Run the solver
     	solver->Integrate();
+
+	// Export Results
+	solver->ExportSol();
 
 	return 0;
 }

@@ -14,10 +14,11 @@ public:
     void SetTimeStep(double deltat);
     void SetFinalTime(double finalt);
     void SetReynoldsNumber(double Re);
+    void MatPrint(double* x, int n);
 
     void Initialise();
     void Integrate();
-
+    void ExportSol();
     // Add any other public functions
 
 private:
