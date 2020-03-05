@@ -8,10 +8,10 @@ clc
 clear all
 close all
 tic
-nx = 120;
-ny = 120;
-Lx = pi;
-Ly = pi;
+nx = 161;
+ny = 161;
+Lx = 1;
+Ly = 1;
 
 dx = Lx/(nx-1);
 dy = Ly/(ny-1);
@@ -24,7 +24,7 @@ A = eye(kx) * (2/dx^2)...
     + diag(ones((kx)-1,1), 1)/-dx^2;
 
 A = kron(eye(kx,kx),A) + kron(A, eye(kx,kx));
-
+lol
 for i=1:kx
     for j=1:ky
         f(j+(i-1)*kx) = sin(i*dx)*sin(j*dy);

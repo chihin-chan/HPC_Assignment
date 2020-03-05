@@ -8,7 +8,7 @@ extern "C" {
 		       	      const double* ab, const int& LDAB, int& info);
 	void F77NAME(dpbtrs) (const char& UPLO, const int& n, const int& KD,
 			      const int& nrhs, const double* AB, const int& ldab,
-			      const double* b, const int& ldb, int& info);
+			      const double* rhsrhs, const int& ldb, int& info);
 }
 
 using namespace std;
@@ -32,7 +32,6 @@ PoissonSolver::PoissonSolver(int nx, int ny, double ddx, double ddy){
 
 	k = (ku+1)*internal_nodes;	            // Size of banded matrix (ku+kl+1)*N
 	a_banded = new double[k];               // a_banded holds matrix A in banded format
-    b = new double[internal_nodes];
 
 	// Move the initialising to poisson solver contructor
 	// Generating Banded Matrix in column format for Possion Solve
@@ -69,19 +68,27 @@ PoissonSolver::PoissonSolver(int nx, int ny, double ddx, double ddy){
 */
 	// Caching Cholesky factorisation
 	F77NAME(dpbtrf) ('u', internal_nodes, ku, a_banded, ku+1, info);		
-    cout << "Cholesky Factorisation was called" << endl;
-}
+    cout << endl << endl << "Cholesky Factorisation was called" << endl <<endl;
+/*
+	// Printing A_banded for checking
+	for(unsigned int i = 0; i < (ku+1) ; i++){
+		for(unsigned int j = 0; j < internal_nodes; j++){
+			cout << a_banded[i+j*(ku+1)] << " ";
+		}
+		cout << endl;
+	}
+*/
 
-PoissonSolver::~PoissonSolver(){
-    
+}
+PoissonSolver::~PoissonSolver(){ 
     // Clean Matrices
-    delete[] a_banded;
-    delete[] b;
+//    delete[] a_banded;
+  //  delete[] b;
 }
 
-double* PoissonSolver::CholSolve(double* b){
-    
-	F77NAME(dpbtrs) ('U', internal_nodes, ku, 1, a_banded, ku+1, b, internal_nodes, info);
+void PoissonSolver::CholSolve(double* rhsrhs){
+    cout << "here" << endl;  
+    F77NAME(dpbtrs) ('U', internal_nodes, ku, 1, a_banded, ku+1, rhsrhs, internal_nodes, info);
     cout << "Cholesky Solver was called" << endl;
     cout << "Info: " << info << endl;
 }

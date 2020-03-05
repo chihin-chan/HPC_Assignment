@@ -23,6 +23,10 @@ LidDrivenCavity::LidDrivenCavity()
 
 LidDrivenCavity::~LidDrivenCavity()
 {
+    delete[] v;
+    delete[] s;
+    delete[] v_new;
+    delete[] s_new;
 }
 
 void LidDrivenCavity::SetDomainSize(double xlen, double ylen)
@@ -81,8 +85,8 @@ void LidDrivenCavity::Initialise()
 	memset(v_new, 0.0, Nx*Ny*sizeof(double));	
 	memset(s_new, 0.0, Nx*Ny*sizeof(double));
 	// Initialising Poisson Solver
-	solver(Nx, Ny, dx, dy) ;	
-	cout << endl << endl <<"Initialising Possion Solver..." << endl << endl;
+    solver = PoissonSolver(Nx, Ny, dx, dy);	
+	cout << endl << endl <<"Initialisation Completd ..." << endl << endl;
 	
 }
 
@@ -145,7 +149,6 @@ void LidDrivenCavity::Integrate()
 			}
 		}
 		
-		
 		// Solution of Poisson Problem to Compute Streamfunction at t + dt	
 		// Mapping Global Nodes to inner Nodes
 		for(int j = 0; j< Ny-2; j++){
@@ -153,7 +156,7 @@ void LidDrivenCavity::Integrate()
 				rhs[i+j*(Nx-2)] = v_new[(i+1)+(j+1)*Nx];
 			}
 		}
-
+   
 		// Call Solver.solve
 		// Solving Using Forward Substitution
 		solver.CholSolve(rhs);
@@ -175,7 +178,8 @@ void LidDrivenCavity::Integrate()
 		cblas_dcopy(Nx*Ny, s_new, 1, s, 1);
 		t_elapse+= dt;
 		cout << "Time elapsed: " << t_elapse<< endl<< endl;
-	}
+    }
+    delete[] rhs;
 }
 
 void LidDrivenCavity::ExportSol(){

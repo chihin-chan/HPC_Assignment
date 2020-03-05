@@ -9,7 +9,7 @@ public:
     PoissonSolver();
     ~PoissonSolver();
     PoissonSolver(int nx, int ny, double ddx, double ddy);
-    double* CholSolve(double* b);
+    void CholSolve(double* rhsrhs);
 
 private:
     int Nx;
@@ -17,8 +17,7 @@ private:
     double dx;
     double dy;
     double* a_banded;
-    double* b;
-
+   
 	int internal_nodes;
 	int ku;
 	int k;

@@ -9,8 +9,8 @@ using namespace std;
 int main(){
 
     // Creates a Poisson Solver
-    int nx = 120;
-    int ny = 120;
+    int nx = 161;
+    int ny = 161;
     double Lx = M_PI;
     double Ly = M_PI;
     double dx = double(Lx)/(nx-1.0);
