@@ -7,6 +7,8 @@
 #define DOWN  1
 #define LEFT  2
 #define RIGHT 3
+#define sf	  0
+#define vort  1
 using namespace std;
 
 void matPrint(double* a, int nx, int ny){
@@ -37,7 +39,9 @@ int main(int argc, char** argv){
     const int dims[ndims] = {Px, Py};
     const int periods[ndims] = {0, 0};
 	int coords[ndims];
+	int tag[2] = {0,1};
 	
+	MPI_Request req;
 	MPI_Comm mygrid;
 
     // Initialising MPI
@@ -58,6 +62,7 @@ int main(int argc, char** argv){
     // Obtain Shifted Source and Destination ranks in both directions
     MPI_Cart_shift(mygrid, 0, 1, &nghbrs[UP], &nghbrs[DOWN]);
     MPI_Cart_shift(mygrid, 1, 1, &nghbrs[LEFT], &nghbrs[RIGHT]);
+	
 
     // Defining vorticity and streafunction matrix for subdomains
     int loc_nx = ceil(double(Nx)/double(Py)) + 2;
@@ -108,17 +113,15 @@ int main(int argc, char** argv){
         if(nghbrs[RIGHT] == -2){
             for(int i = loc_sub_nx*(loc_ny-1)-loc_sub_nx+1; i<(loc_sub_nx*loc_ny)-1-loc_sub_nx;i++){
                 v_sub_right[i] = (s_sub_right[i] - s_sub_right[i-loc_sub_nx])*2.0/dy/dy - 2.0*U/dy;
-            }
-
+        	}
         }
         // Rest of Top subdomains
         else{
             for(int i = loc_nx*(loc_ny-1)-loc_nx+1; i<(loc_nx*loc_ny)-1-loc_nx; i++){
                 v[i] = (s[i] - s[i-loc_nx])*2.0/dy/dy - 2.0*U/dy;
             }
-
         }
-    }
+	}
 
     ////////////////
     // LEFT DOMAINS
@@ -175,10 +178,44 @@ int main(int argc, char** argv){
             }
         }
     }
+
+	///////////////////////////////////////
+	// Packing Information and Sending
+	///////////////////////////////////////	
+	if(nghbrs[UP] == -2){
+		MPI_Request reqs[4];
+		MPI_Status stats[4];
+		if(nghbrs[RIGHT] != -2){
+			double* outbuf_s = new double[loc_nx];
+			double* outbuf_v = new double[loc_nx];
+			int k = 0;
+			for(int i = loc_nx-2; i < (loc_nx*loc_ny)-1; i+= loc_nx){
+				outbuf_s[k] = s[i];
+				outbuf_v[k] = v[i];
+				k++;
+			} 
+			// Packing envelope to be sent out;
+			cout <<"I am rank: " << rank << ", sending to my right of rank: " << nghbrs[RIGHT] << endl;
+			MPI_Isend(outbuf_s, loc_nx, MPI_DOUBLE, nghbrs[RIGHT], tag[sf], mygrid, &reqs[0]);
+			MPI_Isend(outbuf_v, loc_nx, MPI_DOUBLE, nghbrs[RIGHT], tag[vort], mygrid, &reqs[1]);
+		}/*
+		if(nghbrs[LEFT] != -2){
+			double* inbuf_s = new double[loc_nx];
+			fill_n(inbuf_s, loc_nx, 0.0);
+			double* inbuf_v = new double[loc_nx];
+			fill_n(inbuf_s, loc_nx, 0.0);
+			int k = 0;
+			cout <<"I am rank: " << rank << ", recv from my left of rank: " << nghbrs[LEFT] << endl;
+			MPI_Irecv(inbuf_s, loc_nx, MPI_DOUBLE, nghbrs[LEFT], tag[sf], mygrid, &reqs[2]);
+			MPI_Irecv(inbuf_v, loc_nx, MPI_DOUBLE, nghbrs[LEFT], tag[vort], mygrid, &reqs[3]);
+		}
+		MPI_Waitall(4, reqs, stats);*/
+	}
+			
 	
 
-	printf("rank = %2d coords = %2d%2d neighbors(u,d,l,r) = %2d %2d %2d %2d\n\n",
-        rank,coords[0],coords[1],nghbrs[UP],nghbrs[DOWN],nghbrs[LEFT],nghbrs[RIGHT]);
+	// printf("rank = %2d coords = %2d%2d neighbors(u,d,l,r) = %2d %2d %2d %2d\n\n",
+        //rank,coords[0],coords[1],nghbrs[UP],nghbrs[DOWN],nghbrs[LEFT],nghbrs[RIGHT]);
   
 MPI_Finalize();
 }
