@@ -2,6 +2,7 @@
 #include <mpi.h>
 #include <math.h>
 #include <algorithm>
+#include "PoissonSolver.h"
 
 #define UP    0
 #define DOWN  1
@@ -20,12 +21,67 @@ void matPrint(double* a, int nx, int ny){
     }
 }
 
+void matPrintRank(double* a, int nx, int ny, int rank, int r){
+	if (rank == r){
+		cout << "Printing Matrix from rank: " << r << endl;
+		for(int j = ny-1; j>=0;  j--){
+		    for(int i = 0; i<nx; i++){
+		        cout << a[i+j*nx] << "   ";
+		    }
+		cout << endl;
+		}
+	}
+}
+
 void vecHonPrint(double*x , int nx){
 	for(int i =0; i<nx; i++){
 		cout << x[i] << "	";
 	}
 	cout << endl;
 }
+
+void MapPoiSolve(double* s, double* v, double dx, double dy, int nx, int ny,
+				 int x_off, int y_off, int x_start, int y_start, int poix, int poiy, int r){
+	
+	PoissonSolver ps(nx - poix, ny - poiy, dx, dy);
+	cout << "Mapping and solving for rank: " << r << endl;
+	double* rhs = new double[(nx-x_off) * (ny-y_off)];
+	// Generating RHS for Ax = b;
+	for(int i = 0; i < nx-x_off; i++){
+		for(int j = 0; j < ny-y_off; j++){
+			rhs[i+j*(nx-x_off)] = v[(i+x_start) + nx*(j+y_start)];
+			// Subtracting streamfunction on left boundary
+			if (i==0){
+				rhs[i+j*(nx-x_off)] = rhs[i+j*(nx-x_off)] - s[(i+x_start) + nx*(j+y_start) - 1];
+			}
+			// Subtracting streamfunction on bottom boundary
+			if (j==0){
+				rhs[i+j*(nx-x_off)] = rhs[i+j*(nx-x_off)] - s[(i+x_start) + nx*(j+y_start) - nx];
+			}
+			// Subtracting streamfunction on right boundary
+			if (i == nx-x_off-1){
+				rhs[i+j*(nx-x_off)] = rhs[i+j*(nx-x_off)] - s[(i+x_start) + nx*(j+y_start) + nx];
+			}	
+			// Subtracting streamfunction on top boundary
+			if (j == ny-y_off-1){
+				rhs[i+j*(nx-x_off)] = rhs[i+j*(nx-x_off)] - s[(i+x_start) + nx*(j+y_start) + 1];
+			}
+		}
+	}
+	
+	// Solving
+	ps.CholSolve(rhs);
+	// Mapping solution into vorticity at n+1
+	for(int i = 0; i < nx-x_off; i++){
+		for(int j = 0; j < ny-y_off; j++){
+			v[(i+x_start) + nx*(j+y_start)] = rhs[i+j*(nx-x_off)];
+		}
+	}
+	
+	delete[] rhs;
+}
+	
+			
 
 void boundaryConditions(int loc_nx, int loc_ny, int loc_sub_nx, int loc_sub_ny,
 						double dx, double dy, double* v, double* s,
@@ -107,7 +163,8 @@ void boundaryConditions(int loc_nx, int loc_ny, int loc_sub_nx, int loc_sub_ny,
 }
 
 void interiorUpdate(double* v, double* s, int nx, int ny, int xstart, int xend,
-					int jstart, int jend, double dx, double dy, double dt, double Re){
+					int jstart, int jend, double dx, double dy, double dt, double Re, int rank){
+	cout << "Caculating Interior Nodes for rank: " << rank << endl;
 	// Calculation of interior vorticity at time t
 	for(int i = xstart; i<nx-xend; i++){
 		for(int j = jstart; j<ny-jend; j++){
@@ -131,9 +188,9 @@ void interiorUpdate(double* v, double* s, int nx, int ny, int xstart, int xend,
 
 int main(int argc, char** argv){
 
-    int Nx = 21;
-    int Ny = 27;
-    int Px = 4;
+    int Nx = 11;
+    int Ny = 17;
+    int Px = 3;
     int Py = 3;
     int Lx = 1;
     int Ly = 1;
@@ -586,55 +643,454 @@ int main(int argc, char** argv){
 	}
 
 	MPI_Barrier(mygrid);
+	
 
 	///////////////////////////////
 	// Updating Stencils for Rank 0
 	///////////////////////////////
 	// Top Left Corner
 	if(rank == 0){
-		//interiorUpdate(v, s, loc_nx, loc_ny, 2, 1, 1, 2, dx, dy, dt, Re);
+		interiorUpdate(v, s, loc_nx, loc_ny, 2, 1, 1, 2, dx, dy, dt, Re, rank);
 	}
 
 	// Left Columns except corners
 	else if(coords[1] == 0 && rank != 0 && coords[0] != Px-1){
-		interiorUpdate(v, s, loc_nx, loc_ny, 2, 1, 1, 1, dx, dy, dt, Re);
+		interiorUpdate(v, s, loc_nx, loc_ny, 2, 1, 1, 1, dx, dy, dt, Re, rank);
 	}
 	// Bottom Left Corner
 	else if(coords[1] == 0 && coords[0] == Px-1){
-		interiorUpdate(v_sub_down, s_sub_down, loc_nx, loc_sub_ny, 2, 1, 2, 1, dx, dy, dt, Re);
+		interiorUpdate(v_sub_down, s_sub_down, loc_nx, loc_sub_ny, 2, 1, 2, 1, dx, dy, dt, Re, rank);
 	}
 	// Top Row except corners
 	else if(coords[0] == 0 && rank != 0 && coords[1] != Py-1){
-		interiorUpdate(v, s, loc_nx, loc_ny, 1, 1, 1, 2, dx, dy, dt, Re);
+		interiorUpdate(v, s, loc_nx, loc_ny, 1, 1, 1, 2, dx, dy, dt, Re, rank);
 	}
 	// Top Right Corner
 	else if(rank == Py-1){
-		interiorUpdate(v_sub_right, s_sub_right, loc_sub_nx, loc_ny, 1, 2, 1, 2, dx, dy, dt, Re);
+		interiorUpdate(v_sub_right, s_sub_right, loc_sub_nx, loc_ny, 1, 2, 1, 2, dx, dy, dt, Re, rank);
 	}
 	// Right Columns except corners
 	else if(coords[1] == Py-1 && rank != Py-1 && coords[0] != Px - 1){
-		interiorUpdate(v_sub_right, s_sub_right, loc_sub_nx, loc_ny, 1, 2, 1, 1, dx, dy, dt, Re);
+		interiorUpdate(v_sub_right, s_sub_right, loc_sub_nx, loc_ny, 1, 2, 1, 1, dx, dy, dt, Re, rank);
 	}
 	// Interior 
 	else if(coords[0] > 0 && coords[0] < Px-1 && coords[1] > 0 && coords[1] < Py-1){
-		interiorUpdate(v, s, loc_nx, loc_ny, 1, 1, 1, 1, dx, dy, dt, Re);
+		interiorUpdate(v, s, loc_nx, loc_ny, 1, 1, 1, 1, dx, dy, dt, Re, rank);
 	}
 	// Bottom Row except corners
 	else if(coords[0] == Px-1 && coords[1] != 0 && rank != (Px*Py)-1){
-		interiorUpdate(v_sub_down, s_sub_down, loc_nx, loc_sub_ny, 1, 1, 2, 1, dx, dy, dt, Re);
+		interiorUpdate(v_sub_down, s_sub_down, loc_nx, loc_sub_ny, 1, 1, 2, 1, dx, dy, dt, Re, rank);
 	}
 	else{
-		cout << "Im rank: " << rank << endl;
-		cout << "loc_nx: " << loc_nx << endl;
-		cout << "loc_ny: " << loc_ny << endl;
-		cout << "loc_sub_nx" << loc_sub_nx << endl;
-		cout << "loc_sub_ny" << loc_sub_ny << endl;
-		interiorUpdate(v_sub, s_sub, loc_sub_nx, loc_sub_ny, 1, 2, 2, 1, dx, dy, dt, Re);
-		//matPrint(v_sub, loc_sub_nx, loc_sub_ny);
+		interiorUpdate(v_sub, s_sub, loc_sub_nx, loc_sub_ny, 1, 2, 2, 1, dx, dy, dt, Re, rank);
 	}
 
-	
+	/////////////////////////////////////////////////////////////
+	// Packing/Sending Receiving/Unpacking from/to right
+	/////////////////////////////////////////////////////////////
+	if(nghbrs[RIGHT] != -2){
+		double* outbuf_s;
+		double* outbuf_v;
+		double* inbuf_s;
+		double* inbuf_v;
+		// Bottom Deficient Subdomains
+		if(nghbrs[DOWN] == -2){
+			outbuf_s = new double[loc_sub_ny];
+			outbuf_v = new double[loc_sub_ny];
+			inbuf_s = new double[loc_sub_ny];
+			inbuf_v = new double[loc_sub_ny];
+			int k = 0;
+			// Packing
+			for (int i = loc_nx - 2; i < loc_nx*loc_sub_ny -1; i+=loc_nx){
+				outbuf_s[k] = s_sub_down[i];
+				outbuf_v[k] = v_sub_down[i];
+				k++;
+			}
+			// Sending
+			MPI_Isend(outbuf_s, loc_sub_ny, MPI_DOUBLE, nghbrs[RIGHT], tag[sf], mygrid, &req);
+			MPI_Isend(outbuf_v, loc_sub_ny, MPI_DOUBLE, nghbrs[RIGHT], tag[vort], mygrid, &req);
+			// Receiving
+			MPI_Irecv(inbuf_s, loc_sub_ny, MPI_DOUBLE, nghbrs[RIGHT], tag[sf], mygrid, &req);
+			MPI_Irecv(inbuf_v, loc_sub_ny, MPI_DOUBLE, nghbrs[RIGHT], tag[vort], mygrid, &req);
+			// Unpacking
+			k = 0;
+			for (int i = loc_nx-1; i<(loc_nx*loc_sub_ny)-1; i+= loc_nx){
+				s_sub_down[i] = inbuf_s[k];
+				v_sub_down[i] = inbuf_v[k];
+				k++;
+			}
+			
+		}
+		else{
+			outbuf_s = new double[loc_ny];
+			outbuf_v = new double[loc_ny];
+			inbuf_s = new double[loc_ny];
+			inbuf_v = new double[loc_ny];
+			int k = 0;
+			// Packing
+			for (int i = loc_nx - 2; i < loc_nx*loc_ny-1; i+=loc_nx){
+				outbuf_s[k] = s_sub_down[i];
+				outbuf_v[k] = v_sub_down[i];
+				k++;
+			}
+			// Sending
+			MPI_Isend(outbuf_s, loc_ny, MPI_DOUBLE, nghbrs[RIGHT], tag[sf], mygrid, &req);
+			MPI_Isend(outbuf_v, loc_ny, MPI_DOUBLE, nghbrs[RIGHT], tag[vort], mygrid, &req);
+			// Receiving
+			MPI_Irecv(inbuf_s, loc_ny, MPI_DOUBLE, nghbrs[RIGHT], tag[sf], mygrid, &req);
+			MPI_Irecv(inbuf_v, loc_ny, MPI_DOUBLE, nghbrs[RIGHT], tag[vort], mygrid, &req);
+			k = 0;
+			// Unpacking
+			for (int i = loc_nx -1; i<(loc_nx*loc_ny)-1; i+= loc_nx){
+				s[i] = inbuf_s[k];
+				v[i] = inbuf_v[k];
+				k++;
+			}
+		}
+	}
 
+	////////////////////////////////////////////////////////////
+	// Sending/Receiving Packing/Unpacking to/from LEFT
+	////////////////////////////////////////////////////////////
+	if(nghbrs[LEFT] != -2){
+		double* inbuf_s;
+		double* inbuf_v;
+		double* outbuf_s;
+		double* outbuf_v;
+		// Bottom right deficient subdomain
+		if( (nghbrs[RIGHT] == -2) && (nghbrs[DOWN] == -2) ){
+			inbuf_s = new double[loc_sub_ny];
+			inbuf_v = new double[loc_sub_ny];
+			outbuf_s = new double[loc_sub_ny];
+			outbuf_v = new double[loc_sub_ny];
+			// Receiving			
+			MPI_Irecv(inbuf_s, loc_sub_ny, MPI_DOUBLE, nghbrs[LEFT], tag[sf], mygrid, &req);
+			MPI_Irecv(inbuf_v, loc_sub_ny, MPI_DOUBLE, nghbrs[LEFT], tag[vort], mygrid, &req);
+			int k = 0;			
+			// Unpacking
+			for(int i = 0; i<loc_sub_nx*loc_sub_ny-1; i+=loc_sub_nx){
+				s_sub[i] = inbuf_s[k];
+				v_sub[i] = inbuf_v[k];
+			}
+			// Packing
+			k = 0;
+			for(int i = 1; i<(loc_sub_ny*loc_sub_nx) - 1; i+=loc_sub_nx){
+				outbuf_s[k] = s_sub[i];
+				outbuf_v[k] = v_sub[i];
+				k++;
+			}
+			// Sending
+			MPI_Isend(outbuf_s, loc_sub_ny, MPI_DOUBLE, nghbrs[LEFT], tag[sf], mygrid, &req);
+			MPI_Isend(outbuf_v, loc_sub_ny, MPI_DOUBLE, nghbrs[LEFT], tag[vort], mygrid, &req);
+			
+		}
+		// Right column deficient subdomains
+		else if((nghbrs[RIGHT] == -2) && (nghbrs[DOWN] != -2)){
+			inbuf_s = new double[loc_ny];
+			inbuf_v = new double[loc_ny];
+			outbuf_s = new double[loc_ny];
+			outbuf_v = new double[loc_ny];
+			// Receiving
+			MPI_Irecv(inbuf_s, loc_ny, MPI_DOUBLE, nghbrs[LEFT], tag[sf], mygrid, &req);
+			MPI_Irecv(inbuf_v, loc_ny, MPI_DOUBLE, nghbrs[LEFT], tag[vort], mygrid, &req);
+			// Unpacking
+			int k = 0;			
+			for(int i = 0; i<(loc_sub_nx*loc_ny)-1; i+=loc_sub_nx){
+				s_sub_right[i] = inbuf_s[k];
+				v_sub_right[i] = inbuf_v[k];
+				k++;
+			}
+			// Packing
+			k = 0;
+			for(int i = 1; i<(loc_ny*loc_sub_nx)-1; i+=loc_sub_nx){
+				outbuf_s[k] = s_sub_right[i];
+				outbuf_v[k] = v_sub_right[i];
+				k++;
+			}
+			// Sending
+			MPI_Isend(outbuf_s, loc_ny, MPI_DOUBLE, nghbrs[LEFT], tag[sf], mygrid, &req);
+			MPI_Isend(outbuf_v, loc_ny, MPI_DOUBLE, nghbrs[LEFT], tag[vort], mygrid, &req);
+			
+		}
+		// Bottom row deficient subdomains
+		else if((nghbrs[DOWN] == -2) && (nghbrs[RIGHT] != -2)){
+			inbuf_s = new double[loc_sub_ny];
+			inbuf_v = new double[loc_sub_ny];
+			outbuf_s = new double[loc_sub_ny];
+			outbuf_v = new double[loc_sub_ny];
+			// Receiving
+			MPI_Irecv(inbuf_s, loc_sub_ny, MPI_DOUBLE, nghbrs[LEFT], tag[sf], mygrid, &req);
+			MPI_Irecv(inbuf_v, loc_sub_ny, MPI_DOUBLE, nghbrs[LEFT], tag[vort], mygrid, &req);
+			int k = 0;			
+			// Unpacking
+			for(int i = 0; i<(loc_sub_ny*loc_nx) - 1; i+=loc_nx){
+				s_sub_down[i] = inbuf_s[k];
+				v_sub_down[i] = inbuf_v[k];
+			}
+			// Packing
+			k = 0;
+			for(int i = 1; i<(loc_sub_ny*loc_nx) - 1; i+=loc_nx){
+				outbuf_s[k] = s_sub_down[i];
+				outbuf_v[k] = v_sub_down[i];
+			}
+			// Sending
+			MPI_Isend(outbuf_s, loc_sub_ny, MPI_DOUBLE, nghbrs[LEFT], tag[sf], mygrid, &req);
+			MPI_Isend(outbuf_v, loc_sub_ny, MPI_DOUBLE, nghbrs[LEFT], tag[vort], mygrid, &req);
+			
+		}
+		// Rest of non-deficient subdomains
+		else{
+			inbuf_s = new double[loc_ny];
+			inbuf_v = new double[loc_ny];
+			outbuf_s = new double[loc_ny];
+			outbuf_v = new double[loc_ny];
+			// Receiving
+			MPI_Irecv(inbuf_s, loc_ny, MPI_DOUBLE, nghbrs[LEFT], tag[sf], mygrid, &req);
+			MPI_Irecv(inbuf_v, loc_ny, MPI_DOUBLE, nghbrs[LEFT], tag[vort], mygrid, &req);
+			// Unpacking
+			int k = 0;			
+			for(int i = 0; i<(loc_nx*loc_ny) -1; i+=loc_nx){
+				s[i] = inbuf_s[k];
+				v[i] = inbuf_v[k];
+				k++;
+			}
+			// Packing
+			k = 0;
+			for (int i = 1; i<(loc_nx*loc_ny) - 1; i+=loc_nx){
+				outbuf_s[k] = s[i];
+				outbuf_v[k] = v[i];
+			}
+			// Sending
+			MPI_Isend(outbuf_s, loc_ny, MPI_DOUBLE, nghbrs[LEFT], tag[sf], mygrid, &req);
+			MPI_Isend(outbuf_v, loc_ny, MPI_DOUBLE, nghbrs[LEFT], tag[vort], mygrid, &req);
+		}
+	}
+	
+	//////////////////////////////////////////////////////////
+	// Packing/Sending and Unpacking/Receiving from DOWN nghbrs
+	//////////////////////////////////////////////////////////
+	if (nghbrs[DOWN] != -2){
+		double* outbuf_s;
+		double* outbuf_v;
+		double* inbuf_s;
+		double* inbuf_v;
+		// Right column deficient subdomains
+		if (nghbrs[RIGHT] == -2){
+			outbuf_s = new double[loc_sub_nx];
+			outbuf_v = new double[loc_sub_nx];
+			inbuf_s = new double[loc_sub_nx];
+			inbuf_v = new double[loc_sub_nx];
+			// Packing
+			int k = 0;
+			for(int i = loc_sub_nx; i<2*loc_sub_nx; i++){
+				outbuf_s[k] = s_sub_right[i];
+				outbuf_v[k] = v_sub_right[i];
+				k++;
+			}
+			// Sending
+			MPI_Isend(outbuf_s, loc_sub_nx, MPI_DOUBLE, nghbrs[DOWN], tag[sf], mygrid, &req);
+			MPI_Isend(outbuf_v, loc_sub_nx, MPI_DOUBLE, nghbrs[DOWN], tag[vort], mygrid, &req);
+			// Receiving
+			MPI_Irecv(inbuf_s, loc_sub_nx, MPI_DOUBLE, nghbrs[DOWN], tag[sf], mygrid, &req);
+			MPI_Irecv(inbuf_v, loc_sub_nx, MPI_DOUBLE, nghbrs[DOWN], tag[vort], mygrid, &req);
+			// Unpacking			
+			k = 0 ;
+			for (int i = 0; i<loc_sub_nx; i++){
+				s_sub_right[i] = inbuf_s[k];
+				v_sub_right[i] = inbuf_v[k];
+				k++;
+			}
+		}
+		// Rest of the non-deficient subdomains
+		else{
+			outbuf_s = new double[loc_nx];
+			outbuf_v = new double[loc_nx];
+			inbuf_s = new double[loc_nx];
+			inbuf_v = new double[loc_nx];
+			// Packing
+			int k = 0;
+			for (int i=loc_nx; i<2*loc_nx; i++){
+				outbuf_s[k] = s[i];
+				outbuf_v[k] = v[i];
+				k++;
+			}
+			// Sending
+			MPI_Isend(outbuf_s, loc_nx, MPI_DOUBLE, nghbrs[DOWN], tag[sf], mygrid, &req);
+			MPI_Isend(outbuf_v, loc_nx, MPI_DOUBLE, nghbrs[DOWN], tag[vort], mygrid, &req);
+			// Receiving
+			MPI_Irecv(inbuf_s, loc_nx, MPI_DOUBLE, nghbrs[DOWN], tag[sf], mygrid, &req);
+			MPI_Irecv(inbuf_v, loc_nx, MPI_DOUBLE, nghbrs[DOWN], tag[sf], mygrid, &req);
+			// Unpacking
+			k = 0 ;
+			for (int i = 0; i< loc_nx; i++){
+				s[i] = inbuf_s[k];
+				v[i] = inbuf_v[k];
+				k++;
+			}
+		}
+	}
+
+	/////////////////////////////////////////////////////////
+	// Sending/Receiving and Packing/Unpacking from UP nghbrs
+	/////////////////////////////////////////////////////////
+	if (nghbrs[UP] != -2) {
+		double* inbuf_s;
+		double* inbuf_v;
+		double* outbuf_s;
+		double* outbuf_v;
+		// Bottom Right deficient subdomains
+		if ((nghbrs[RIGHT] == -2) && (nghbrs[DOWN] == -2)){
+			inbuf_s = new double[loc_sub_nx];
+			inbuf_v = new double[loc_sub_nx];
+			outbuf_s = new double[loc_sub_nx];
+			outbuf_v = new double[loc_sub_nx];
+			// Receving
+			MPI_Irecv(inbuf_s, loc_sub_nx, MPI_DOUBLE, nghbrs[UP], tag[sf], mygrid, &req);
+			MPI_Irecv(inbuf_v, loc_sub_nx, MPI_DOUBLE, nghbrs[UP], tag[vort], mygrid, &req);
+			// Unpacking			
+			int k = 0;		
+			for(int i = (loc_sub_nx)*(loc_sub_ny-1); i<(loc_sub_nx*loc_sub_ny)-1; i++){
+				s_sub[i] = inbuf_s[k];
+				v_sub[i] = inbuf_v[k];
+				k++;
+			}
+			// Packing
+			k = 0;
+			for (int i = (loc_sub_nx)*(loc_sub_ny-1)-loc_sub_nx; i<loc_sub_nx*(loc_sub_ny-1); i++){
+				outbuf_s[k] = s_sub[k];
+				outbuf_v[k] = v_sub[k];
+				k++;
+			}
+			// Sending
+			MPI_Isend(outbuf_s, loc_sub_nx, MPI_DOUBLE, nghbrs[UP], tag[sf], mygrid, &req);
+			MPI_Isend(outbuf_v, loc_sub_nx, MPI_DOUBLE, nghbrs[UP], tag[vort], mygrid, &req);
+
+		}
+		// Bottom Row Deficient subdomains
+		else if( (nghbrs[RIGHT] != -2) && (nghbrs[DOWN] == -2)){
+			inbuf_s = new double[loc_nx];
+			inbuf_v = new double[loc_nx];
+			outbuf_s = new double[loc_nx];
+			outbuf_v = new double[loc_nx];
+			// Receiving
+			MPI_Irecv(inbuf_s, loc_nx, MPI_DOUBLE, nghbrs[UP], tag[sf], mygrid, &req);
+			MPI_Irecv(inbuf_v, loc_nx, MPI_DOUBLE, nghbrs[UP], tag[vort], mygrid, &req);
+			// Unpacking
+			int k = 0;			
+				for(int i=(loc_nx)*(loc_sub_ny-1); i<(loc_nx)*(loc_sub_ny)-1; i++){
+				s_sub_down[i] = inbuf_s[k];
+				v_sub_down[i] = inbuf_v[k];
+				k++;
+			}
+			// Packing
+			k = 0;
+			for (int i = (loc_nx)*(loc_sub_ny-1)-loc_nx; i<loc_nx*(loc_sub_ny-1); i++){
+				outbuf_s[k] = s_sub_down[i];
+				outbuf_v[k] = v_sub_down[i];
+				k++;
+			}
+			// Sending
+			MPI_Isend(outbuf_s, loc_nx, MPI_DOUBLE, nghbrs[UP], tag[sf], mygrid, &req);
+			MPI_Isend(outbuf_v, loc_nx, MPI_DOUBLE, nghbrs[UP], tag[vort], mygrid, &req);
+		}
+		// Right Deficient subdomains
+		else if ( (nghbrs[RIGHT] == -2) && (nghbrs[DOWN] != -2)){
+			inbuf_s = new double[loc_sub_nx];
+			inbuf_v = new double[loc_sub_nx];
+			outbuf_s = new double[loc_sub_nx];
+			outbuf_v = new double[loc_sub_nx];
+			// Receiving
+			MPI_Irecv(inbuf_s, loc_sub_nx, MPI_DOUBLE, nghbrs[UP], tag[sf], mygrid, &req);
+			MPI_Irecv(inbuf_v, loc_sub_nx, MPI_DOUBLE, nghbrs[UP], tag[vort], mygrid, &req);
+			int k = 0;
+			// Unpacking
+			for(int i = (loc_sub_nx)*(loc_ny-1); i<(loc_sub_nx*loc_ny)-1; i++){
+				s_sub_right[i] = inbuf_s[k];
+				v_sub_right[i] = inbuf_v[k];
+				k++;
+			}
+			// Packing 
+			k = 0;
+			for (int i = (loc_sub_nx)*(loc_ny-1) - loc_sub_nx; i<loc_sub_nx*(loc_ny-1);i++){
+				outbuf_s[k] = s_sub_right[i];
+				outbuf_v[k] = v_sub_right[i];
+				k++;
+			}
+			// Sending
+			MPI_Isend(outbuf_s, loc_sub_nx, MPI_DOUBLE, nghbrs[UP], tag[sf], mygrid, &req);
+			MPI_Isend(outbuf_v, loc_sub_nx, MPI_DOUBLE, nghbrs[UP], tag[vort], mygrid, &req);
+			
+		}
+		// Rest of the domain
+		else{
+			inbuf_s = new double[loc_nx];
+			inbuf_v = new double[loc_nx];
+			outbuf_s = new double[loc_nx];
+			outbuf_v = new double[loc_nx];
+			// Receiving
+			MPI_Irecv(inbuf_s, loc_nx, MPI_DOUBLE, nghbrs[UP], tag[sf], mygrid, &req);
+			MPI_Irecv(inbuf_v, loc_nx, MPI_DOUBLE, nghbrs[UP], tag[vort], mygrid, &req);
+			// Unpacking
+			int k = 0;
+			for(int i = (loc_nx)*(loc_ny-1); i<(loc_nx*loc_ny)-1; i++){
+				s[i] = inbuf_s[k];
+				v[i] = inbuf_v[k];
+				k++;
+			}
+			// Packing
+			k = 0;
+			for (int i = loc_nx*(loc_ny-1)-loc_nx; i<(loc_nx)*(loc_ny-1); i++){
+				outbuf_s[k] = s[i];
+				outbuf_v[k] = v[i];
+				k++;
+			}
+			// Sending
+			MPI_Isend(outbuf_s, loc_nx, MPI_DOUBLE, nghbrs[UP], tag[sf], mygrid, &req);
+			MPI_Isend(outbuf_v, loc_nx, MPI_DOUBLE, nghbrs[UP], tag[vort], mygrid, &req);
+		}
+	}
+	MPI_Barrier(mygrid);
+
+	//////////////////////////
+	// Poisson Solver
+	//////////////////////////
+	
+	// Top Left Corner
+	if(rank == 0){
+		MapPoiSolve(s, v, dx, dy, loc_nx, loc_ny, 3, 3, 2, 1, 1, 1, rank);
+	}
+	// Left Columns except corners
+	else if(coords[1] == 0 && rank != 0 && coords[0] != Px-1){
+		MapPoiSolve(s, v, dx, dy, loc_nx, loc_ny, 3, 2, 2, 1, 1, 0, rank);
+	}
+	// Bottom Left Corner
+	else if(coords[1] == 0 && coords[0] == Px-1){
+		MapPoiSolve(s_sub_down, v_sub_down, dx, dy, loc_nx, loc_sub_ny, 3, 3, 2, 2, 1, 1, rank);
+	}
+	// Top Row except corners
+	else if(coords[0] == 0 && rank != 0 && coords[1] != Py-1){
+		MapPoiSolve(s, v, dx, dy, loc_nx, loc_ny, 2, 3, 1, 1, 0, 1, rank);
+	}
+	// Top Right Corner
+	else if(rank == Py-1){
+		MapPoiSolve(s_sub_right, v_sub_right, dx, dy, loc_sub_nx, loc_ny, 3, 3, 1, 1, 1, 1, rank);
+	}
+	// Right Columns except corners
+	else if(coords[1] == Py-1 && rank != Py-1 && coords[0] != Px - 1){
+		MapPoiSolve(s_sub_right, v_sub_right, dx, dy, loc_sub_nx, loc_ny, 3, 2, 1, 1, 1, 0, rank);
+	}
+	// Interior 
+	else if(coords[0] > 0 && coords[0] < Px-1 && coords[1] > 0 && coords[1] < Py-1){
+		MapPoiSolve(s, v, dx, dy, loc_nx, loc_ny, 2, 2, 1, 1, 0, 0, rank);
+	}
+	// Bottom Row except corners
+	else if(coords[0] == Px-1 && coords[1] != 0 && rank != (Px*Py)-1){
+		MapPoiSolve(s_sub_down, v_sub_down, dx, dy, loc_nx, loc_sub_ny, 2, 3, 1, 2, 0, 1, rank);
+	}
+	// Superdeficient
+	else{
+		MapPoiSolve(s_sub, v_sub, dx, dy, loc_sub_nx, loc_sub_ny, 3, 3, 1, 2, 1, 1, rank);
+	}
 
 		
 	/*printf("rank = %2d coords = %2d%2d neighbors(u,d,l,r) = %2d %2d %2d %2d\n\n",
