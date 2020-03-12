@@ -91,7 +91,7 @@ void LidDrivenCavity::MatPrintRank(int r){
 		cout << "Printing Streamfunction from rank: " << r << endl;
 		for(int j = loc_ny-1; j>=0;  j--){
 		    for(int i = 0; i<loc_nx; i++){
-		        cout << s[i+j*loc_nx] << "   ";
+		        cout << v[i+j*loc_nx] << "   ";
 		    }
 		cout << endl;
 		}
@@ -135,7 +135,7 @@ void LidDrivenCavity::Initialise()
     	}
 	}
 	if(coords[0] == Px-1){
-		if(Ny%Py != 0){
+		if(Ny%Px != 0){
 		    loc_ny = (Ny % int( ceil(double(Ny)/double(Px)) )) + 2;
 		}
 		else{
@@ -145,8 +145,8 @@ void LidDrivenCavity::Initialise()
 	v = new double[loc_nx*loc_ny];
 	s = new double[loc_nx*loc_ny];
 	// Initialising Vorticity, w and Streamfunction, s to zero
-	fill_n(s, loc_nx*loc_ny, rank);
-	fill_n(v, loc_nx*loc_ny, rank);
+	fill_n(s, loc_nx*loc_ny, 0.0);
+	fill_n(v, loc_nx*loc_ny, 0.0);
 	// Calculating Grid Spacing
 	dx = double(Lx) / double((Nx-1.0));
 	dy = double(Ly) / double((Ny-1.0));
@@ -209,11 +209,11 @@ void LidDrivenCavity::Communicate()
 			k++;
 		}
 		// Sending
-		cout << "I'm rank: " << rank << " and I am sending to DOWN rank: " << nghbrs[DOWN] << endl;
+		// cout << "I'm rank: " << rank << " and I am sending to DOWN rank: " << nghbrs[DOWN] << endl;
 		MPI_Send(outbuf_s.data(), loc_nx, MPI_DOUBLE, nghbrs[DOWN], tag[sf], mygrid);
 		MPI_Send(outbuf_v.data(), loc_nx, MPI_DOUBLE, nghbrs[DOWN], tag[vort], mygrid);
 		// Receiving
-		cout << "I'm rank: " << rank << " and I am recv from DOWN rank: " << nghbrs[DOWN] << endl;
+		// cout << "I'm rank: " << rank << " and I am recv from DOWN rank: " << nghbrs[DOWN] << endl;
 		MPI_Recv(inbuf_s.data(), loc_nx, MPI_DOUBLE, nghbrs[DOWN], tag[sf], mygrid,MPI_STATUS_IGNORE);
 		MPI_Recv(inbuf_v.data(), loc_nx, MPI_DOUBLE, nghbrs[DOWN], tag[vort], mygrid,MPI_STATUS_IGNORE);
 		// Unpacking
@@ -237,13 +237,12 @@ void LidDrivenCavity::Communicate()
 			outbuf_v[k] = v[i];
 			k++;
 		}
-		cout<<endl;
 		// Sending
-		cout << "I'm rank: " << rank << " and I am sending to UP rank: " << nghbrs[UP] << endl;
+		// cout << "I'm rank: " << rank << " and I am sending to UP rank: " << nghbrs[UP] << endl;
 		MPI_Send(outbuf_s.data(), loc_nx, MPI_DOUBLE, nghbrs[UP], tag[sf], mygrid);
 		MPI_Send(outbuf_v.data(), loc_nx, MPI_DOUBLE, nghbrs[UP], tag[vort], mygrid);
 		// Receiving
-		cout << "I'm rank: " << rank << " and I am recv from UP rank: " << nghbrs[UP] << endl;
+		// cout << "I'm rank: " << rank << " and I am recv from UP rank: " << nghbrs[UP] << endl;
 		MPI_Recv(inbuf_s.data(), loc_nx, MPI_DOUBLE, nghbrs[UP], tag[sf], mygrid,MPI_STATUS_IGNORE);
 		MPI_Recv(inbuf_v.data(), loc_nx, MPI_DOUBLE, nghbrs[UP], tag[vort], mygrid,MPI_STATUS_IGNORE);
 		// Unpacking
@@ -257,10 +256,10 @@ void LidDrivenCavity::Communicate()
 
 	// Sending and Receiving from RIGHT Neighbours
 	if(nghbrs[RIGHT] != -2){
-		vector<double> outbuf_s(loc_nx);
-		vector<double> outbuf_v(loc_nx);
-		vector<double> inbuf_s(loc_nx);
-		vector<double> inbuf_v(loc_nx);
+		vector<double> outbuf_s(loc_ny);
+		vector<double> outbuf_v(loc_ny);
+		vector<double> inbuf_s(loc_ny);
+		vector<double> inbuf_v(loc_ny);
 		int k = 0;
 		// Packing
 		for (int i = loc_nx - 2; i < loc_nx*loc_ny-1; i+=loc_nx){
@@ -269,16 +268,16 @@ void LidDrivenCavity::Communicate()
 			k++;
 		}
 		// Sending
-		cout << "I'm rank: " << rank << " and I am sending to RIGHT rank: " << nghbrs[RIGHT] << endl;
+		// cout << "I'm rank: " << rank << " and I am sending to RIGHT rank: " << nghbrs[RIGHT] << endl;
 		MPI_Send(outbuf_s.data(), loc_ny, MPI_DOUBLE, nghbrs[RIGHT], tag[sf], mygrid);
 		MPI_Send(outbuf_v.data(), loc_ny, MPI_DOUBLE, nghbrs[RIGHT], tag[vort], mygrid);
 		// Receiving
-		cout << "I'm rank: " << rank << " and I am recv to RIGHT rank: " << nghbrs[RIGHT] << endl;
-		MPI_Recv(inbuf_s.data(), loc_nx, MPI_DOUBLE, nghbrs[RIGHT], tag[sf], mygrid,MPI_STATUS_IGNORE);
-		MPI_Recv(inbuf_v.data(), loc_nx, MPI_DOUBLE, nghbrs[RIGHT], tag[vort], mygrid,MPI_STATUS_IGNORE);
+		// cout << "I'm rank: " << rank << " and I am recv to RIGHT rank: " << nghbrs[RIGHT] << endl;
+		MPI_Recv(inbuf_s.data(), loc_ny, MPI_DOUBLE, nghbrs[RIGHT], tag[sf], mygrid,MPI_STATUS_IGNORE);
+		MPI_Recv(inbuf_v.data(), loc_ny, MPI_DOUBLE, nghbrs[RIGHT], tag[vort], mygrid,MPI_STATUS_IGNORE);
 		k = 0;
 		// Unpacking
-		for (int i = loc_nx -1; i<(loc_nx*loc_ny)-1; i+= loc_nx){
+		for (int i = loc_nx -1; i<(loc_nx*loc_ny); i+= loc_nx){
 			s[i] = inbuf_s[k];
 			v[i] = inbuf_v[k];
 			k++;
@@ -287,22 +286,23 @@ void LidDrivenCavity::Communicate()
 	
 	// Sending and Receiving from LEFT Neighbours
 	if(nghbrs[LEFT] != -2){
-		vector<double> outbuf_s(loc_nx);
-		vector<double> outbuf_v(loc_nx);
-		vector<double> inbuf_s(loc_nx);
-		vector<double> inbuf_v(loc_nx);
+		vector<double> outbuf_s(loc_ny);
+		vector<double> outbuf_v(loc_ny);
+		vector<double> inbuf_s(loc_ny);
+		vector<double> inbuf_v(loc_ny);
 		// Packing
 		int k = 0;
-		for (int i = 1; i<(loc_nx*loc_ny) - 1; i+=loc_nx){
+		for (int i = 1; i<(loc_nx*loc_ny); i+=loc_nx){
 			outbuf_s[k] = s[i];
 			outbuf_v[k] = v[i];
+			k++;
 		}
 		// Sending
-		cout << "I'm rank: " << rank << " and I am sending to LEFT rank: " << nghbrs[LEFT] << endl;
+		// cout << "I'm rank: " << rank << " and I am sending to LEFT rank: " << nghbrs[LEFT] << endl;
 		MPI_Send(outbuf_s.data(), loc_ny, MPI_DOUBLE, nghbrs[LEFT], tag[sf], mygrid);
 		MPI_Send(outbuf_v.data(), loc_ny, MPI_DOUBLE, nghbrs[LEFT], tag[vort], mygrid);
 		// Receiving
-		cout << "I'm rank: " << rank << " and I am recv to LEFT rank: " << nghbrs[LEFT] << endl;
+		// cout << "I'm rank: " << rank << " and I am recv to LEFT rank: " << nghbrs[LEFT] << endl;
 		MPI_Recv(inbuf_s.data(), loc_ny, MPI_DOUBLE, nghbrs[LEFT], tag[sf], mygrid,MPI_STATUS_IGNORE);
 		MPI_Recv(inbuf_v.data(), loc_ny, MPI_DOUBLE, nghbrs[LEFT], tag[vort], mygrid,MPI_STATUS_IGNORE);
 		// Unpacking
@@ -385,7 +385,7 @@ void LidDrivenCavity::MapRHS(){
 	for(int i = 0; i < loc_nx-x_off; i++){
 		for(int j = 0; j < loc_ny-y_off; j++){
 			rhs[i+j*(loc_nx-x_off)] = v[(i+x_start) + loc_nx*(j+y_start)];
-			/*
+
 			// Subtracting streamfunction on left boundary
 			if (i==0){
 				rhs[i+j*(loc_nx-x_off)] = rhs[i+j*(loc_nx-x_off)] - s[(i+x_start) + loc_nx*(j+y_start) - 1];
@@ -503,11 +503,11 @@ void LidDrivenCavity::Integrate()
 		
 		// MPI
 		Communicate();
-		MatPrintRank(0);
 		// Calculation of Interior Vorticity at time t
 		// Calculation of Interior Vorticity at time t + dt
-		//InteriorUpdate();
-		// Communicate();
+		InteriorUpdate();
+		MatPrintRank(0);
+		Communicate();
 		// Solution of Poisson Problem to Compute Streamfunction at t + dt	
 		// Mapping Global Nodes to inner Nodes
 		//MapRHS();
