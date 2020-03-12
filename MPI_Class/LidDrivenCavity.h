@@ -19,6 +19,7 @@ public:
     void MatPrint(double* x, int n);
 	void GetRank(int rr);
 	void GetSize(int ss);
+	void MatPrintRank(int r);
 
 
     void Initialise();
@@ -27,13 +28,14 @@ public:
 	void Communicate();
     void Integrate();
     void ExportSol();
+	void MapRHS();
+	void iMapRHS();
     // Add any other public functions
 
 private:
     double* v = nullptr;
     double* s = nullptr;
-    double* v_new = nullptr;
-    double* s_new = nullptr;
+    double* rhs = nullptr;
 
     double dt;
     double T;
