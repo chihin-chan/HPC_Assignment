@@ -91,7 +91,7 @@ void LidDrivenCavity::MatPrintRank(int r){
 		cout << "Printing Streamfunction from rank: " << r << endl;
 		for(int j = loc_ny-1; j>=0;  j--){
 		    for(int i = 0; i<loc_nx; i++){
-		        cout << v[i+j*loc_nx] << "   ";
+		        cout << s[i+j*loc_nx] << "   ";
 		    }
 		cout << endl;
 		}
@@ -187,7 +187,7 @@ void LidDrivenCavity::BoundaryConditions()
     ///////////////////////////////////////
     if(nghbrs[DOWN] == -2){
         for(int i = 1+loc_nx; i < (2*loc_nx) - 1; i++){
-            v[i] = (s[i] - s[i+loc_nx])*2/dy/dy;
+            v[i] = (s[i] - s[i+loc_nx])*2.0/dy/dy;
         }
     }
 }
@@ -325,25 +325,21 @@ void LidDrivenCavity::InteriorUpdate(){
 	
 	if(nghbrs[UP] == -2){
 		jend = 2;
-		cout << "Rank: " << rank << " does not have a UP nghbr" << endl;
 	}
 	if(nghbrs[DOWN] == -2){
 		jstart = 2;
-		cout << "Rank: " << rank << " does not have a DOWN nghbr" << endl;
 	}
 	if(nghbrs[RIGHT] == -2){
 		xend = 2;
-		cout << "Rank: " << rank << " does not have a RIGHT nghbr" << endl;
 	}
 	if(nghbrs[LEFT] == -2){
 		xstart = 2;
-		cout << "Rank: " << rank << " does not have a LEFT nghbr" << endl;
 	}
 	// Calculation of interior vorticity at time t
 	for(int i = xstart; i<loc_nx-xend; i++){
 		for(int j = jstart; j<loc_ny-jend; j++){
 			v[i+loc_nx*j] = -(s[i+loc_nx*j+1] - 2.0*s[i+loc_nx*j] + s[i+loc_nx*j-1])/dx/dx
-						-(s[i+loc_nx*j+loc_nx] -2.0*s[i+loc_nx*j] + s[i+loc_nx*j-loc_nx])/dy/dy;
+					-(s[i+loc_nx*j+loc_nx] -2.0*s[i+loc_nx*j] + s[i+loc_nx*j-loc_nx])/dy/dy;
 		}
 	}
 	// Calculation of interior vorticity at time t+dt;
@@ -379,36 +375,62 @@ void LidDrivenCavity::MapRHS(){
 		x_off += 1;
 		x_start = 2;
 	}
-	cout << "Im rank: " << rank << "	xstart: " << x_start << "	ystart:" << y_start <<"	y_off: " << y_off <<" x_off: " << x_off << endl;
 
-/*
 	for(int i = 0; i < loc_nx-x_off; i++){
 		for(int j = 0; j < loc_ny-y_off; j++){
 			rhs[i+j*(loc_nx-x_off)] = v[(i+x_start) + loc_nx*(j+y_start)];
-
 			// Subtracting streamfunction on left boundary
 			if (i==0){
-				rhs[i+j*(loc_nx-x_off)] = rhs[i+j*(loc_nx-x_off)] - s[(i+x_start) + loc_nx*(j+y_start) - 1];
+				rhs[i+j*(loc_nx-x_off)] = rhs[i+j*(loc_nx-x_off)] 
+				+ s[(i+x_start) + loc_nx*(j+y_start) - 1]/dx/dx;
 			}
 			// Subtracting streamfunction on bottom boundary
 			if (j==0){
-				rhs[i+j*(loc_nx-x_off)] = rhs[i+j*(loc_nx-x_off)] - s[(i+x_start) + loc_nx*(j+y_start) - loc_nx];
+				rhs[i+j*(loc_nx-x_off)] = rhs[i+j*(loc_nx-x_off)] 
+				+ s[(i+x_start) + loc_nx*(j+y_start) - loc_nx]/dy/dy;
 			}
 			// Subtracting streamfunction on right boundary
 			if (i == loc_nx-x_off-1){
-				rhs[i+j*(loc_nx-x_off)] = rhs[i+j*(loc_nx-x_off)] - s[(i+x_start) + loc_nx*(j+y_start) + loc_nx];
+				rhs[i+j*(loc_nx-x_off)] = rhs[i+j*(loc_nx-x_off)] 
+				+ s[(i+x_start) + loc_nx*(j+y_start) + loc_nx]/dx/dx;
 			}	
 			// Subtracting streamfunction on top boundary
 			if (j == loc_ny-y_off-1){
-				rhs[i+j*(loc_nx-x_off)] = rhs[i+j*(loc_nx-x_off)] - s[(i+x_start) + loc_nx*(j+y_start) + 1];
+				rhs[i+j*(loc_nx-x_off)] = rhs[i+j*(loc_nx-x_off)] 
+				+ s[(i+x_start) + loc_nx*(j+y_start) + 1]/dy/dy;
 			
 			}
 		}
 	}
-
-*/
 }
 
+
+void LidDrivenCavity::iMapRHS(){
+	int x_off = 2;
+	int y_off = 2;
+	int x_start = 1;
+	int y_start = 1;
+	if (nghbrs[UP] == -2){
+		y_off += 1;
+	}
+	if (nghbrs[DOWN] == -2){
+		y_off += 1;
+		y_start = 2;
+	}
+	if (nghbrs[RIGHT] == -2){
+		x_off += 1;
+	}
+	if (nghbrs[LEFT] == -2){
+		x_off += 1;
+		x_start = 2;
+	}
+
+	for(int i = 0; i < loc_nx-x_off; i++){
+		for(int j = 0; j < loc_ny-y_off; j++){
+			s[(i+x_start) + loc_nx*(j+y_start)] = rhs[i+j*(loc_nx-x_off)]; 
+		}
+	}
+}
 
 void LidDrivenCavity::Integrate()
 {	
@@ -444,7 +466,7 @@ void LidDrivenCavity::Integrate()
 	// a_banded holds matrix A in banded format
 	double* a_banded = new double[k];
 	// rhs stores vector b for Ax = b
-	double* rhs = new double[internal_nodes];
+	rhs = new double[internal_nodes];
 	for(int i = 0; i< internal_nodes; i++){
 		rhs[i] = 0.0;
 	}
@@ -474,7 +496,7 @@ void LidDrivenCavity::Integrate()
 			a_banded[i-1] = beta_x;
 		}
 		else{
-			a_banded[i-1] = 0;
+			a_banded[i-1] = 0.0;
 		}
 		count++;
 	}
@@ -494,30 +516,32 @@ void LidDrivenCavity::Integrate()
 */
 	// Caching Cholesky factorisation
 	F77NAME(dpbtrf) ('u', internal_nodes, ku, a_banded, ku+1, info);	
-		
 	double t_elapse = 0.0;
 	// Starting time loop
-		
+	while (t_elapse < T){	
 		// Imposing Boundary Conditions
-		BoundaryConditions();
 		
+		BoundaryConditions();	
 		// MPI
 		Communicate();
 		// Calculation of Interior Vorticity at time t
 		// Calculation of Interior Vorticity at time t + dt
 		InteriorUpdate();
-		MatPrintRank(0);
 		Communicate();
-		// Solution of Poisson Problem to Compute Streamfunction at t + dt	
-		// Mapping Global Nodes to inner Nodes
-		//MapRHS();
-		// Solving Using Forward Substitution
-		//F77NAME(dpbtrs) ('U', internal_nodes, ku, 1, a_banded, ku+1, rhs, internal_nodes, info);
-
-		// Mapping Solution to Global Vector
-
+		for (int i = 0; i < 5; i++){
+			// Solution of Poisson Problem to Compute Streamfunction at t + dt	
+			// Mapping Global Nodes to inner Nodes
+			MapRHS();
+			// Solving Using Forward Substitution
+			F77NAME(dpbtrs) ('U', internal_nodes, ku, 1, a_banded, ku+1, rhs, internal_nodes, info);
+			iMapRHS();
+			Communicate();
+		}
+		t_elapse += dt;
+		cout << "Time-step: " << t_elapse << endl;
+	MatPrintRank(1);	
+	}
 }
-
 void LidDrivenCavity::ExportSol(){
 	ofstream sOut("streamfunction.txt", ios::out | ios::trunc);
    	sOut.precision(5);
