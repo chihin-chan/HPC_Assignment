@@ -91,7 +91,7 @@ void LidDrivenCavity::MatPrintRank(int r){
 		cout << "Printing Streamfunction from rank: " << r << endl;
 		for(int j = loc_ny-1; j>=0;  j--){
 		    for(int i = 0; i<loc_nx; i++){
-		        cout << s[i+j*loc_nx] << "   ";
+		        cout << v[i+j*loc_nx] << "   ";
 		    }
 		cout << endl;
 		}
@@ -462,15 +462,13 @@ void LidDrivenCavity::Integrate()
 	double norm;				// Storing 2-norm of solution difference
 
 	int info;
-	int count;
+	int count = 1;
 	// a_banded holds matrix A in banded format
 	double* a_banded = new double[k];
+	fill_n(a_banded, k, 0.0);	
 	// rhs stores vector b for Ax = b
 	rhs = new double[internal_nodes];
-	for(int i = 0; i< internal_nodes; i++){
-		rhs[i] = 0.0;
-	}
-
+	fill_n(rhs, internal_nodes, 0.0);
 	// Try and Catch if dt is too large
 	double cond = Re*Lx/(Nx-1)*Ly/(Ny-1) / 4;
 	try{	
@@ -482,40 +480,48 @@ void LidDrivenCavity::Integrate()
 	      return;	      
 	}
 
-	// Generating Banded Matrix in column format for Possion Solve
-	// Initialising a_banded to all zeros
-	for(unsigned int i=0; i<k; i++){
-		a_banded[i] = 0.0;
-	}
-	// Filling Bottom and Bottom +1 rows with alpha and beta_x
+	// Storing Elements of a_banded in banded format
 	a_banded[ku] = alpha;
-	count = 1;
-	for(unsigned int i=ku+(ku+1); i<k; i+=(Nx-1)){
+	for(int i=2*(ku+1)-1; i<k; i+=(ku+1)){
 		a_banded[i] = alpha;
-		if (count%(Nx-2) != 0){
+		// Storing beta_x
+		if(count % (loc_nx-x_off) != 0){
 			a_banded[i-1] = beta_x;
 		}
 		else{
 			a_banded[i-1] = 0.0;
 		}
-		count++;
+		// Storing beta_y
+		if(i > (ku+1)*(ku)){
+			a_banded[i-ku] = beta_y;
+		}
 	}
+	
 
-	// Filling Top Row of Banded Matrix with beta_y
-	for(unsigned int i=ku*(ku+1); i<k; i+=(Nx-1)){
-		a_banded[i] = beta_y;
-	}
-/*
 	// Printing A_banded for checking
+	if(rank == 0){
 	for(unsigned int i = 0; i < (ku+1) ; i++){
 		for(unsigned int j = 0; j < internal_nodes; j++){
 			cout << a_banded[i+j*(ku+1)] << " ";
 		}
 		cout << endl;
 	}
-*/
+	}
+	
 	// Caching Cholesky factorisation
-	F77NAME(dpbtrf) ('u', internal_nodes, ku, a_banded, ku+1, info);	
+	F77NAME(dpbtrf) ('u', internal_nodes, ku, a_banded, ku+1, info);
+
+/*
+	// Printing A_banded for checking
+	for(unsigned int i = 0; i < (ku+1) ; i++){
+		for(unsigned int j = 0; j < internal_nodes; j++){
+			if (rank==0){
+			cout << a_banded[i+j*(ku+1)] << " ";
+			}
+		}
+		cout << endl;
+	}
+	*/
 	double t_elapse = 0.0;
 	// Starting time loop
 	while (t_elapse < T){	
@@ -528,13 +534,16 @@ void LidDrivenCavity::Integrate()
 		// Calculation of Interior Vorticity at time t + dt
 		InteriorUpdate();
 		Communicate();
+		// MatPrintRank(1);	
+		// Solution of Poisson Problem to Compute Streamfunction at t + dt	
 		for (int i = 0; i < 5; i++){
-			// Solution of Poisson Problem to Compute Streamfunction at t + dt	
-			// Mapping Global Nodes to inner Nodes
+			// Mapping inner vorticity and boundaries of streamfunction to RHS at t+dt
 			MapRHS();
-			// Solving Using Forward Substitution
+			// Solving Using Forward/Backward Substitution
 			F77NAME(dpbtrs) ('U', internal_nodes, ku, 1, a_banded, ku+1, rhs, internal_nodes, info);
+			// Mapping RHS to inner streamfunction at t+dt
 			iMapRHS();
+			// Updating streamfunction to neighbours
 			Communicate();
 		}
 		t_elapse += dt;
