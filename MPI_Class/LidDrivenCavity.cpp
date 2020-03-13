@@ -86,12 +86,24 @@ void LidDrivenCavity::MatPrint(double *x, int n)
 	}
 }
 
-void LidDrivenCavity::MatPrintRank(int r){
+void LidDrivenCavity::SMatPrintRank(int r){
 	if (rank == r){
 		cout << "Printing Streamfunction from rank: " << r << endl;
 		for(int j = loc_ny-1; j>=0;  j--){
 		    for(int i = 0; i<loc_nx; i++){
-		        cout << v[i+j*loc_nx] << "   ";
+		        cout << setw(12) << s[i+j*loc_nx];
+		    }
+		cout << endl;
+		}
+	}
+}
+
+void LidDrivenCavity::VMatPrintRank(int r){
+	if (rank == r){
+		cout << "Printing Vorticity from rank: " << r << endl;
+		for(int j = loc_ny-1; j>=0;  j--){
+		    for(int i = 0; i<loc_nx; i++){
+		        cout << setw(12) << v[i+j*loc_nx];
 		    }
 		cout << endl;
 		}
@@ -342,6 +354,8 @@ void LidDrivenCavity::InteriorUpdate(){
 					-(s[i+loc_nx*j+loc_nx] -2.0*s[i+loc_nx*j] + s[i+loc_nx*j-loc_nx])/dy/dy;
 		}
 	}
+
+	Communicate();
 	// Calculation of interior vorticity at time t+dt;
 	for(int i = xstart; i<loc_nx-xend; i++){
 		for(int j = jstart; j<loc_ny-jend; j++){
@@ -381,6 +395,7 @@ void LidDrivenCavity::MapRHS(){
 			if (i==0){
 				rhs[i+j*(loc_nx-x_off)] = rhs[i+j*(loc_nx-x_off)] 
 				+ s[(i+x_start) + loc_nx*(j+y_start) - 1]/dx/dx;
+				
 			}
 			// Subtracting streamfunction on bottom boundary
 			if (j==0){
@@ -390,13 +405,12 @@ void LidDrivenCavity::MapRHS(){
 			// Subtracting streamfunction on right boundary
 			if (i == loc_nx-x_off-1){
 				rhs[i+j*(loc_nx-x_off)] = rhs[i+j*(loc_nx-x_off)] 
-				+ s[(i+x_start) + loc_nx*(j+y_start) + loc_nx]/dx/dx;
+				+ s[(i+x_start) + loc_nx*(j+y_start) + 1]/dx/dx;
 			}	
 			// Subtracting streamfunction on top boundary
 			if (j == loc_ny-y_off-1){
 				rhs[i+j*(loc_nx-x_off)] = rhs[i+j*(loc_nx-x_off)] 
-				+ s[(i+x_start) + loc_nx*(j+y_start) + 1]/dy/dy;
-			
+				+ s[(i+x_start) + loc_nx*(j+y_start) + loc_nx]/dy/dy;
 			}
 		}
 	}
@@ -496,57 +510,62 @@ void LidDrivenCavity::Integrate()
 	}
 	
 
-	// Caching Cholesky factorisation
-	F77NAME(dpbtrf) ('u', internal_nodes, ku, a_banded, ku+1, info);
-/*
 	// Printing A_banded for checking
-    if (rank == 1){
+    if (rank == 0){
         for(unsigned int i = 0; i < (ku+1) ; i++){
             for(unsigned int j = 0; j < internal_nodes; j++){
                 cout << a_banded[i+j*(ku+1)] << " ";
             }
             cout << endl;
         }
-    }i
-*/
+        cout << endl;
+    }
+
+	// Caching Cholesky factorisation
+	F77NAME(dpbtrf) ('u', internal_nodes, ku, a_banded, ku+1, info);
+
+	// Printing A_banded for checking
+    if (rank == 0){
+        for(unsigned int i = 0; i < (ku+1) ; i++){
+            for(unsigned int j = 0; j < internal_nodes; j++){
+                cout << a_banded[i+j*(ku+1)] << " ";
+            }
+            cout << endl;
+        }
+        cout << endl;
+    }
+
 	double t_elapse = 0.0;
 	// Starting time loop
 	while (t_elapse < T){	
 		// Imposing Boundary Conditions
+        MPI_Barrier(mygrid);
 		BoundaryConditions();	
-		
-        // MPI
-		Communicate();
-		
+
         // Calculation of Interior Vorticity at time t
 		// Calculation of Interior Vorticity at time t + dt
+        MPI_Barrier(mygrid);
 		InteriorUpdate();
-		Communicate();
 		// MatPrintRank(1);	
-		
+		VMatPrintRank(0);
         // Solution of Poisson Problem to Compute Streamfunction at t + dt	
 		for (int i = 0; i < 50; i++){
+			MPI_Barrier(mygrid);
 			// Mapping inner vorticity and boundaries of streamfunction to RHS at t+dt
 			MapRHS();
-			// Solving Using Forward/Backward Substitution
 			F77NAME(dpbtrs) ('U', internal_nodes, ku, 1, a_banded, ku+1, rhs, internal_nodes, info);
-			// Mapping RHS to inner streamfunction at t+dt
+			// Mapping rhs to inner streamfunction
 			iMapRHS();
-            if (rank == 1){
-                for (int i=0; i<internal_nodes; i++){
-                    cout << rhs[i] << endl;
-                }
-            
-            cout << endl;
-            }
+            MPI_Barrier(mygrid);
 			// Updating streamfunction to neighbours
 			Communicate();
 		}
 		t_elapse += dt;
-		cout << "Time-step: " << t_elapse << endl;
-	// MatPrintRank(1);	
+	 	SMatPrintRank(0);
+		cout << "Time-step: " << t_elapse << endl;	
 	}
 }
+
 void LidDrivenCavity::ExportSol(){
 	ofstream sOut("streamfunction.txt", ios::out | ios::trunc);
    	sOut.precision(5);

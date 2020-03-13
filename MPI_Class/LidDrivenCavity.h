@@ -19,7 +19,8 @@ public:
     void MatPrint(double* x, int n);
 	void GetRank(int rr);
 	void GetSize(int ss);
-	void MatPrintRank(int r);
+	void SMatPrintRank(int r);
+	void VMatPrintRank(int r);
 
 
     void Initialise();
