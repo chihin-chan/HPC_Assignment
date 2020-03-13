@@ -168,7 +168,7 @@ void LidDrivenCavity::Initialise()
 void LidDrivenCavity::BoundaryConditions()
 {
 	double U = 1.0;
-	///////////////
+    ///////////////
     // TOP DOMAINS
     ///////////////
     if(nghbrs[UP] == -2){
@@ -206,7 +206,7 @@ void LidDrivenCavity::BoundaryConditions()
 
 void LidDrivenCavity::Communicate()
 {	
-
+	MPI_Barrier(mygrid);
 	// Sending and Receiving from DOWN Neighbours
 	if(nghbrs[DOWN] != -2){
 		vector<double> outbuf_s(loc_nx);
@@ -334,7 +334,7 @@ void LidDrivenCavity::InteriorUpdate(){
 	int jstart = 1;
 	int xend = 1;
 	int jend = 1;
-	
+	double* v_new = new double[loc_nx*loc_ny];
 	if(nghbrs[UP] == -2){
 		jend = 2;
 	}
@@ -347,6 +347,8 @@ void LidDrivenCavity::InteriorUpdate(){
 	if(nghbrs[LEFT] == -2){
 		xstart = 2;
 	}
+	if(rank==0)cout<<"Before first interior"<<endl;
+	VMatPrintRank(0);
 	// Calculation of interior vorticity at time t
 	for(int i = xstart; i<loc_nx-xend; i++){
 		for(int j = jstart; j<loc_ny-jend; j++){
@@ -354,18 +356,25 @@ void LidDrivenCavity::InteriorUpdate(){
 					-(s[i+loc_nx*j+loc_nx] -2.0*s[i+loc_nx*j] + s[i+loc_nx*j-loc_nx])/dy/dy;
 		}
 	}
-
 	Communicate();
+	VMatPrintRank(0);
+
+	if(rank==0)cout<<"After first interior"<<endl;
 	// Calculation of interior vorticity at time t+dt;
 	for(int i = xstart; i<loc_nx-xend; i++){
 		for(int j = jstart; j<loc_ny-jend; j++){
-			v[i+loc_nx*j] = v[i+loc_nx*j] 
+			v_new[i+loc_nx*j] = v[i+loc_nx*j] 
          - dt*(s[i+loc_nx*j+loc_nx]-s[i+loc_nx*j-loc_nx])*(v[i+loc_nx*j+1]-v[i+loc_nx*j-1])/4.0/dx/dy
          + dt*(s[i+loc_nx*j+1]-s[i+loc_nx*j-1])*(v[i+loc_nx*j+loc_nx]-v[i+loc_nx*j-loc_nx])/4.0/dx/dy
-         + dt/Re*( (v[i+loc_nx*j+1] - 2.0*v[i+loc_nx*j] + v[i+loc_nx-1])/dx/dx 
-                + (v[i+loc_nx*j+loc_nx] - 2.0*v[i+loc_nx*j] + v[i+loc_nx*j-loc_nx])/dy/dy );
+         + dt*( (v[i+loc_nx*j+1] - 2.0*v[i+loc_nx*j] + v[i+j*loc_nx-1])/dx/dx 
+                + (v[i+loc_nx*j+loc_nx] - 2.0*v[i+loc_nx*j] + v[i+loc_nx*j-loc_nx])/dy/dy )/Re;
 		}
 	}
+
+	v = v_new;
+	if(rank==0)cout<<"After second interior"<<endl;
+	VMatPrintRank(0);
+	delete[] v_new;
 }
 	
 void LidDrivenCavity::MapRHS(){
@@ -547,21 +556,20 @@ void LidDrivenCavity::Integrate()
         MPI_Barrier(mygrid);
 		InteriorUpdate();
 		// MatPrintRank(1);	
-		VMatPrintRank(0);
         // Solution of Poisson Problem to Compute Streamfunction at t + dt	
 		for (int i = 0; i < 50; i++){
 			MPI_Barrier(mygrid);
 			// Mapping inner vorticity and boundaries of streamfunction to RHS at t+dt
 			MapRHS();
+			// Solving
 			F77NAME(dpbtrs) ('U', internal_nodes, ku, 1, a_banded, ku+1, rhs, internal_nodes, info);
 			// Mapping rhs to inner streamfunction
 			iMapRHS();
-            MPI_Barrier(mygrid);
 			// Updating streamfunction to neighbours
 			Communicate();
 		}
 		t_elapse += dt;
-	 	SMatPrintRank(0);
+		SMatPrintRank(0);
 		cout << "Time-step: " << t_elapse << endl;	
 	}
 }
