@@ -345,13 +345,11 @@ void LidDrivenCavity::InteriorUpdate(){
 	// Calculation of interior vorticity at time t+dt;
 	for(int i = xstart; i<loc_nx-xend; i++){
 		for(int j = jstart; j<loc_ny-jend; j++){
-			v[i+loc_nx*j] = dt/Re*( (v[i+loc_nx*j+1] - 2.0*v[i+loc_nx*j] + v[i+loc_nx*j-1])/dx/dx
-						+ (v[i+loc_nx*j+loc_nx] - 2.0*v[i+loc_nx*j] + v[i+loc_nx*j-loc_nx])/dy/dy)
-						+ dt*( (s[i+loc_nx*j+1] - s[i+loc_nx*j-1])/2.0/dx*
-							   (v[i+loc_nx*j+loc_nx] - v[i+loc_nx*j-loc_nx])/2.0/dy)
-						- dt*( (s[i+loc_nx*j+loc_nx] - s[i+loc_nx*j-loc_nx])/2.0/dy*
-							   (v[i+loc_nx*j+1] - v[i+loc_nx*j-1])/2.0/dx) 
-						+ v[i+loc_nx*j];
+			v[i+loc_nx*j] = v[i+loc_nx*j] 
+         - dt*(s[i+loc_nx*j+loc_nx]-s[i+loc_nx*j-loc_nx])*(v[i+loc_nx*j+1]-v[i+loc_nx*j-1])/4.0/dx/dy
+         + dt*(s[i+loc_nx*j+1]-s[i+loc_nx*j-1])*(v[i+loc_nx*j+loc_nx]-v[i+loc_nx*j-loc_nx])/4.0/dx/dy
+         + dt/Re*( (v[i+loc_nx*j+1] - 2.0*v[i+loc_nx*j] + v[i+loc_nx-1])/dx/dx 
+                + (v[i+loc_nx*j+loc_nx] - 2.0*v[i+loc_nx*j] + v[i+loc_nx*j-loc_nx])/dy/dy );
 		}
 	}
 }
@@ -379,7 +377,7 @@ void LidDrivenCavity::MapRHS(){
 	for(int i = 0; i < loc_nx-x_off; i++){
 		for(int j = 0; j < loc_ny-y_off; j++){
 			rhs[i+j*(loc_nx-x_off)] = v[(i+x_start) + loc_nx*(j+y_start)];
-			// Subtracting streamfunction on left boundary
+            // Subtracting streamfunction on left boundary
 			if (i==0){
 				rhs[i+j*(loc_nx-x_off)] = rhs[i+j*(loc_nx-x_off)] 
 				+ s[(i+x_start) + loc_nx*(j+y_start) - 1]/dx/dx;
@@ -424,10 +422,9 @@ void LidDrivenCavity::iMapRHS(){
 		x_off += 1;
 		x_start = 2;
 	}
-
 	for(int i = 0; i < loc_nx-x_off; i++){
 		for(int j = 0; j < loc_ny-y_off; j++){
-			s[(i+x_start) + loc_nx*(j+y_start)] = rhs[i+j*(loc_nx-x_off)]; 
+			s[(i+x_start) + loc_nx*(j+y_start)] = rhs[i+j*(loc_nx-x_off)];
 		}
 	}
 }
@@ -495,60 +492,59 @@ void LidDrivenCavity::Integrate()
 		if(i > (ku+1)*(ku)){
 			a_banded[i-ku] = beta_y;
 		}
+        count++;
 	}
 	
 
-	// Printing A_banded for checking
-	if(rank == 0){
-	for(unsigned int i = 0; i < (ku+1) ; i++){
-		for(unsigned int j = 0; j < internal_nodes; j++){
-			cout << a_banded[i+j*(ku+1)] << " ";
-		}
-		cout << endl;
-	}
-	}
-	
 	// Caching Cholesky factorisation
 	F77NAME(dpbtrf) ('u', internal_nodes, ku, a_banded, ku+1, info);
-
 /*
 	// Printing A_banded for checking
-	for(unsigned int i = 0; i < (ku+1) ; i++){
-		for(unsigned int j = 0; j < internal_nodes; j++){
-			if (rank==0){
-			cout << a_banded[i+j*(ku+1)] << " ";
-			}
-		}
-		cout << endl;
-	}
-	*/
+    if (rank == 1){
+        for(unsigned int i = 0; i < (ku+1) ; i++){
+            for(unsigned int j = 0; j < internal_nodes; j++){
+                cout << a_banded[i+j*(ku+1)] << " ";
+            }
+            cout << endl;
+        }
+    }i
+*/
 	double t_elapse = 0.0;
 	// Starting time loop
 	while (t_elapse < T){	
 		// Imposing Boundary Conditions
-		
 		BoundaryConditions();	
-		// MPI
+		
+        // MPI
 		Communicate();
-		// Calculation of Interior Vorticity at time t
+		
+        // Calculation of Interior Vorticity at time t
 		// Calculation of Interior Vorticity at time t + dt
 		InteriorUpdate();
 		Communicate();
 		// MatPrintRank(1);	
-		// Solution of Poisson Problem to Compute Streamfunction at t + dt	
-		for (int i = 0; i < 5; i++){
+		
+        // Solution of Poisson Problem to Compute Streamfunction at t + dt	
+		for (int i = 0; i < 50; i++){
 			// Mapping inner vorticity and boundaries of streamfunction to RHS at t+dt
 			MapRHS();
 			// Solving Using Forward/Backward Substitution
 			F77NAME(dpbtrs) ('U', internal_nodes, ku, 1, a_banded, ku+1, rhs, internal_nodes, info);
 			// Mapping RHS to inner streamfunction at t+dt
 			iMapRHS();
+            if (rank == 1){
+                for (int i=0; i<internal_nodes; i++){
+                    cout << rhs[i] << endl;
+                }
+            
+            cout << endl;
+            }
 			// Updating streamfunction to neighbours
 			Communicate();
 		}
 		t_elapse += dt;
 		cout << "Time-step: " << t_elapse << endl;
-	MatPrintRank(1);	
+	// MatPrintRank(1);	
 	}
 }
 void LidDrivenCavity::ExportSol(){
