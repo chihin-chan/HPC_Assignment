@@ -37,6 +37,7 @@ private:
     double* v = nullptr;
     double* s = nullptr;
     double* rhs = nullptr;
+    double* v_new = nullptr;
     double* outbuf_s_D = nullptr;
     double* outbuf_v_D = nullptr;
     double* inbuf_s_D = nullptr;

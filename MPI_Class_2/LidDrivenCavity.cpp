@@ -33,8 +33,10 @@ LidDrivenCavity::LidDrivenCavity()
 
 LidDrivenCavity::~LidDrivenCavity()
 {
+	MPI_Barrier(MPI_COMM_WORLD);
 	delete[] v;
 	delete[] s;
+	delete[] v_new;
 	delete[] rhs;
 	delete [] outbuf_s_D;
 	delete [] outbuf_v_D;
@@ -182,6 +184,7 @@ void LidDrivenCavity::Initialise()
 	}	
 	v = new double[loc_nx*loc_ny];
 	s = new double[loc_nx*loc_ny];
+	v_new = new double[loc_nx*loc_ny];
 	outbuf_s_D = new double[loc_nx];
 	outbuf_v_D = new double[loc_nx];
 	inbuf_s_D = new double[loc_nx];
@@ -205,6 +208,7 @@ void LidDrivenCavity::Initialise()
 	// Initialising Vorticity, w and Streamfunction, s to zero
 	fill_n(s, loc_nx*loc_ny, 0.0);
 	fill_n(v, loc_nx*loc_ny, 0.0);
+	fill_n(v_new, loc_nx*loc_ny, 0.0);
 	fill_n(outbuf_s_U, loc_nx, 0.0);
 	fill_n(outbuf_v_U, loc_nx, 0.0);
 	fill_n(inbuf_s_U, loc_nx, 0.0);
@@ -409,7 +413,6 @@ void LidDrivenCavity::InteriorUpdate(){
 	int jstart = 1;
 	int xend = 1;
 	int jend = 1;
-	double* v_new = new double[loc_nx*loc_ny];
 	if(nghbrs[UP] == -2){
 		jend = 2;
 	}
@@ -444,8 +447,11 @@ void LidDrivenCavity::InteriorUpdate(){
                 + (v[i+loc_nx*j+loc_nx] - 2.0*v[i+loc_nx*j] + v[i+loc_nx*j-loc_nx])/dy/dy )/Re;
 		}
 	}
-
-	v = v_new;
+	for(int i = xstart; i<loc_nx-xend; i++){
+		for(int j = jstart; j<loc_ny-jend; j++){
+			v[i+loc_nx*j] = v_new[i+loc_nx*j];
+		}
+	}
 }
 	
 void LidDrivenCavity::MapRHS(){
