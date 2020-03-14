@@ -7,6 +7,8 @@
 #include <iomanip>
 #include <mpi.h>
 #include <vector>
+#include <chrono>
+#include <thread>
 
 #define UP    0
 #define DOWN  1
@@ -31,6 +33,30 @@ LidDrivenCavity::LidDrivenCavity()
 
 LidDrivenCavity::~LidDrivenCavity()
 {
+	delete[] v;
+	delete[] s;
+	delete[] rhs;
+	delete [] outbuf_s_D;
+	delete [] outbuf_v_D;
+	delete [] inbuf_s_D;
+	delete [] inbuf_v_D;
+
+	delete [] outbuf_s_U;
+	delete [] outbuf_v_U;
+	delete [] inbuf_s_U;
+	delete [] inbuf_v_U;
+
+	delete [] outbuf_s_L;
+	delete [] outbuf_v_L;
+	delete [] inbuf_s_L;
+	delete [] inbuf_v_L;
+
+	delete [] outbuf_s_R;
+	delete [] outbuf_v_R;
+	delete [] inbuf_s_R;
+	delete [] inbuf_v_R;
+
+
 }
 
 void LidDrivenCavity::SetDomainSize(double xlen, double ylen)
@@ -156,12 +182,49 @@ void LidDrivenCavity::Initialise()
 	}	
 	v = new double[loc_nx*loc_ny];
 	s = new double[loc_nx*loc_ny];
+	outbuf_s_D = new double[loc_nx];
+	outbuf_v_D = new double[loc_nx];
+	inbuf_s_D = new double[loc_nx];
+	inbuf_v_D = new double[loc_nx];
+
+	outbuf_s_U = new double[loc_nx];
+	outbuf_v_U = new double[loc_nx];
+	inbuf_s_U = new double[loc_nx];
+	inbuf_v_U = new double[loc_nx];
+
+	outbuf_s_L = new double[loc_ny];
+	outbuf_v_L = new double[loc_ny];
+	inbuf_s_L = new double[loc_ny];
+	inbuf_v_L = new double[loc_ny];
+
+	outbuf_s_R = new double[loc_ny];
+	outbuf_v_R = new double[loc_ny];
+	inbuf_s_R = new double[loc_ny];
+	inbuf_v_R = new double[loc_ny];
+
 	// Initialising Vorticity, w and Streamfunction, s to zero
 	fill_n(s, loc_nx*loc_ny, 0.0);
 	fill_n(v, loc_nx*loc_ny, 0.0);
+	fill_n(outbuf_s_U, loc_nx, 0.0);
+	fill_n(outbuf_v_U, loc_nx, 0.0);
+	fill_n(inbuf_s_U, loc_nx, 0.0);
+	fill_n(inbuf_v_U, loc_nx, 0.0);
+	fill_n(outbuf_s_D, loc_nx, 0.0);
+	fill_n(outbuf_v_D, loc_nx, 0.0);
+	fill_n(inbuf_s_D, loc_nx, 0.0);
+	fill_n(inbuf_v_D, loc_nx, 0.0);
+	fill_n(outbuf_s_R, loc_ny, 0.0);
+	fill_n(outbuf_v_R, loc_ny, 0.0);
+	fill_n(inbuf_s_R, loc_ny, 0.0);
+	fill_n(inbuf_v_R, loc_ny, 0.0);
+	fill_n(outbuf_s_L, loc_ny, 0.0);
+	fill_n(outbuf_v_L, loc_ny, 0.0);
+	fill_n(inbuf_s_L, loc_ny, 0.0);
+	fill_n(inbuf_v_L, loc_ny, 0.0);
 	// Calculating Grid Spacing
 	dx = double(Lx) / double((Nx-1.0));
 	dy = double(Ly) / double((Ny-1.0));
+	MPI_Barrier(MPI_COMM_WORLD);
 	
 }
 
@@ -210,147 +273,131 @@ void LidDrivenCavity::Communicate()
 				req9, req10, req11, req12, req13, req14, req15, req16;
 	// Sending and Receiving from DOWN Neighbours
 	if(nghbrs[DOWN] != -2){
-		vector<double> outbuf_s(loc_nx);
-		vector<double> outbuf_v(loc_nx);
-		vector<double> inbuf_s(loc_nx);
-		vector<double> inbuf_v(loc_nx);
 		// Packing
 		int k = 0;
 		for (int i=loc_nx; i<2*loc_nx; i++){
-			outbuf_s[k] = s[i];
-			outbuf_v[k] = v[i];
+			outbuf_s_D[k] = s[i];
+			outbuf_v_D[k] = v[i];
 			k++;
 		}
 		// Sending
-		cout << "I'm rank: " << rank << " and I am sending to DOWN rank: " << nghbrs[DOWN] << endl;
-		MPI_Send(outbuf_s.data(), loc_nx, MPI_DOUBLE, nghbrs[DOWN], tag[sf], mygrid);
-		MPI_Send(outbuf_v.data(), loc_nx, MPI_DOUBLE, nghbrs[DOWN], tag[vort], mygrid);
+		// cout << "I'm rank: " << rank << " and I am sending to DOWN rank: " << nghbrs[DOWN] << endl;
+		MPI_Isend(outbuf_s_D, loc_nx, MPI_DOUBLE, nghbrs[DOWN], tag[sf], mygrid, &req1);
+		MPI_Isend(outbuf_v_D, loc_nx, MPI_DOUBLE, nghbrs[DOWN], tag[vort], mygrid, &req2);
 		
 		// Receiving
-		cout << "I'm rank: " << rank << " and I am recv from DOWN rank: " << nghbrs[DOWN] << endl;
-		MPI_Recv(inbuf_s.data(), loc_nx, MPI_DOUBLE, nghbrs[DOWN], tag[sf], mygrid,MPI_STATUS_IGNORE);
-		MPI_Recv(inbuf_v.data(), loc_nx, MPI_DOUBLE, nghbrs[DOWN], tag[vort], mygrid,MPI_STATUS_IGNORE);
+		// cout << "I'm rank: " << rank << " and I am recv from DOWN rank: " << nghbrs[DOWN] << endl;
+		MPI_Irecv(inbuf_s_D, loc_nx, MPI_DOUBLE, nghbrs[DOWN], tag[sf], mygrid,&req3);
+		MPI_Irecv(inbuf_v_D, loc_nx, MPI_DOUBLE, nghbrs[DOWN], tag[vort], mygrid,&req4);
 
 		// Wait
-		// MPI_Wait(&req1, MPI_STATUS_IGNORE);
-		// MPI_Wait(&req2, MPI_STATUS_IGNORE);
-		// MPI_Wait(&req3, MPI_STATUS_IGNORE);
-		// MPI_Wait(&req4, MPI_STATUS_IGNORE);
+		 MPI_Wait(&req1, MPI_STATUS_IGNORE);
+		 MPI_Wait(&req2, MPI_STATUS_IGNORE);
+		 MPI_Wait(&req3, MPI_STATUS_IGNORE);
+		 MPI_Wait(&req4, MPI_STATUS_IGNORE);
 
 
 		// Unpacking
 		k = 0;
 		for (int i = 0; i< loc_nx; i++){
-			s[i] = inbuf_s[k];
-			v[i] = inbuf_v[k];
+			s[i] = inbuf_s_D[k];
+			v[i] = inbuf_v_D[k];
 			k++;
 		}
 	}
 
 	// Sending and Receiving from UP Neighbours
 	if(nghbrs[UP] != -2){
-		vector<double> outbuf_s(loc_nx);
-		vector<double> outbuf_v(loc_nx);
-		vector<double> inbuf_s(loc_nx);
-		vector<double> inbuf_v(loc_nx);
 		// Packing
 		int k = 0;
 		for (int i = loc_nx*(loc_ny-1)-loc_nx; i<loc_nx*(loc_ny-1); i++){
-			outbuf_s[k] = s[i];
-			outbuf_v[k] = v[i];
+			outbuf_s_U[k] = s[i];
+			outbuf_v_U[k] = v[i];
 			k++;
 		}
 		// Sending
-		cout << "I'm rank: " << rank << " and I am sending to UP rank: " << nghbrs[UP] << endl;
-		MPI_Send(outbuf_s.data(), loc_nx, MPI_DOUBLE, nghbrs[UP], tag[sf], mygrid);
-		MPI_Send(outbuf_v.data(), loc_nx, MPI_DOUBLE, nghbrs[UP], tag[vort], mygrid);
+		// cout << "I'm rank: " << rank << " and I am sending to UP rank: " << nghbrs[UP] << endl;
+		MPI_Isend(outbuf_s_U, loc_nx, MPI_DOUBLE, nghbrs[UP], tag[sf], mygrid, &req5);
+		MPI_Isend(outbuf_v_U, loc_nx, MPI_DOUBLE, nghbrs[UP], tag[vort], mygrid, &req6);
 		// Receiving
-		cout << "I'm rank: " << rank << " and I am recv from UP rank: " << nghbrs[UP] << endl;
-		MPI_Recv(inbuf_s.data(), loc_nx, MPI_DOUBLE, nghbrs[UP], tag[sf], mygrid,MPI_STATUS_IGNORE);
-		MPI_Recv(inbuf_v.data(), loc_nx, MPI_DOUBLE, nghbrs[UP], tag[vort], mygrid,MPI_STATUS_IGNORE);
+		// cout << "I'm rank: " << rank << " and I am recv from UP rank: " << nghbrs[UP] << endl;
+		MPI_Irecv(inbuf_s_U, loc_nx, MPI_DOUBLE, nghbrs[UP], tag[sf], mygrid,&req7);
+		MPI_Irecv(inbuf_v_U, loc_nx, MPI_DOUBLE, nghbrs[UP], tag[vort], mygrid,&req8);
 		// Wait
-		// MPI_Wait(&req5, MPI_STATUS_IGNORE);
-		// MPI_Wait(&req6, MPI_STATUS_IGNORE);
-		// MPI_Wait(&req7, MPI_STATUS_IGNORE);
-		// MPI_Wait(&req8, MPI_STATUS_IGNORE);
+		MPI_Wait(&req5, MPI_STATUS_IGNORE);
+		MPI_Wait(&req6, MPI_STATUS_IGNORE);
+		MPI_Wait(&req7, MPI_STATUS_IGNORE);
+		MPI_Wait(&req8, MPI_STATUS_IGNORE);
 
 
 		// Unpacking
 		k = 0;
 		for(int i = (loc_nx)*(loc_ny-1); i<(loc_nx*loc_ny); i++){
-			s[i] = inbuf_s[k];
-			v[i] = inbuf_v[k];
+			s[i] = inbuf_s_U[k];
+			v[i] = inbuf_v_U[k];
 			k++;
 		}
 	}
 
 	// Sending and Receiving from RIGHT Neighbours
 	if(nghbrs[RIGHT] != -2){
-		vector<double> outbuf_s(loc_ny);
-		vector<double> outbuf_v(loc_ny);
-		vector<double> inbuf_s(loc_ny);
-		vector<double> inbuf_v(loc_ny);
 		int k = 0;
 		// Packing
 		for (int i = loc_nx - 2; i < loc_nx*loc_ny-1; i+=loc_nx){
-			outbuf_s[k] = s[i];
-			outbuf_v[k] = v[i];
+			outbuf_s_R[k] = s[i];
+			outbuf_v_R[k] = v[i];
 			k++;
 		}
 		// Sending
-		cout << "I'm rank: " << rank << " and I am sending to RIGHT rank: " << nghbrs[RIGHT] << endl;
-		MPI_Send(outbuf_s.data(), loc_ny, MPI_DOUBLE, nghbrs[RIGHT], tag[sf], mygrid);
-		MPI_Send(outbuf_v.data(), loc_ny, MPI_DOUBLE, nghbrs[RIGHT], tag[vort], mygrid);
+		// cout << "I'm rank: " << rank << " and I am sending to RIGHT rank: " << nghbrs[RIGHT] << endl;
+		MPI_Isend(outbuf_s_R, loc_ny, MPI_DOUBLE, nghbrs[RIGHT], tag[sf], mygrid, &req9);
+		MPI_Isend(outbuf_v_R, loc_ny, MPI_DOUBLE, nghbrs[RIGHT], tag[vort], mygrid, &req10);
 		// Receiving
-		cout << "I'm rank: " << rank << " and I am recv to RIGHT rank: " << nghbrs[RIGHT] << endl;
-		MPI_Recv(inbuf_s.data(), loc_ny, MPI_DOUBLE, nghbrs[RIGHT], tag[sf], mygrid,MPI_STATUS_IGNORE);
-		MPI_Recv(inbuf_v.data(), loc_ny, MPI_DOUBLE, nghbrs[RIGHT], tag[vort], mygrid,MPI_STATUS_IGNORE);
+		// cout << "I'm rank: " << rank << " and I am recv to RIGHT rank: " << nghbrs[RIGHT] << endl;
+		MPI_Irecv(inbuf_s_R, loc_ny, MPI_DOUBLE, nghbrs[RIGHT], tag[sf], mygrid,&req11);
+		MPI_Irecv(inbuf_v_R, loc_ny, MPI_DOUBLE, nghbrs[RIGHT], tag[vort], mygrid,&req12);
 		// Wait
-		// MPI_Wait(&req9, MPI_STATUS_IGNORE);
-		// MPI_Wait(&req10, MPI_STATUS_IGNORE);
-		// MPI_Wait(&req11, MPI_STATUS_IGNORE);
-		// MPI_Wait(&req12, MPI_STATUS_IGNORE);
+		MPI_Wait(&req9, MPI_STATUS_IGNORE);
+		MPI_Wait(&req10, MPI_STATUS_IGNORE);
+		MPI_Wait(&req11, MPI_STATUS_IGNORE);
+		MPI_Wait(&req12, MPI_STATUS_IGNORE);
 
 		k = 0;
 		// Unpacking
 		for (int i = loc_nx -1; i<(loc_nx*loc_ny); i+= loc_nx){
-			s[i] = inbuf_s[k];
-			v[i] = inbuf_v[k];
+			s[i] = inbuf_s_R[k];
+			v[i] = inbuf_v_R[k];
 			k++;
 		}
 	}
 
 	// Sending and Receiving from LEFT Neighbours
 	if(nghbrs[LEFT] != -2){
-		vector<double> outbuf_s(loc_ny);
-		vector<double> outbuf_v(loc_ny);
-		vector<double> inbuf_s(loc_ny);
-		vector<double> inbuf_v(loc_ny);
 		// Packing
 		int k = 0;
 		for (int i = 1; i<(loc_nx*loc_ny); i+=loc_nx){
-			outbuf_s[k] = s[i];
-			outbuf_v[k] = v[i];
+			outbuf_s_L[k] = s[i];
+			outbuf_v_L[k] = v[i];
 			k++;
 		}
 		// Sending
-		cout << "I'm rank: " << rank << " and I am sending to LEFT rank: " << nghbrs[LEFT] << endl;
-		MPI_Send(outbuf_s.data(), loc_ny, MPI_DOUBLE, nghbrs[LEFT], tag[sf], mygrid);
-		MPI_Send(outbuf_v.data(), loc_ny, MPI_DOUBLE, nghbrs[LEFT], tag[vort], mygrid);
+		// cout << "I'm rank: " << rank << " and I am sending to LEFT rank: " << nghbrs[LEFT] << endl;
+		MPI_Isend(outbuf_s_L, loc_ny, MPI_DOUBLE, nghbrs[LEFT], tag[sf], mygrid, &req13);
+		MPI_Isend(outbuf_v_L, loc_ny, MPI_DOUBLE, nghbrs[LEFT], tag[vort], mygrid, &req14);
 		// Receiving
-		cout << "I'm rank: " << rank << " and I am recv to LEFT rank: " << nghbrs[LEFT] << endl;
-		MPI_Recv(inbuf_s.data(), loc_ny, MPI_DOUBLE, nghbrs[LEFT], tag[sf], mygrid, MPI_STATUS_IGNORE);
-		MPI_Recv(inbuf_v.data(), loc_ny, MPI_DOUBLE, nghbrs[LEFT], tag[vort], mygrid, MPI_STATUS_IGNORE);
+		// cout << "I'm rank: " << rank << " and I am recv to LEFT rank: " << nghbrs[LEFT] << endl;
+		MPI_Irecv(inbuf_s_L, loc_ny, MPI_DOUBLE, nghbrs[LEFT], tag[sf], mygrid,&req15);
+		MPI_Irecv(inbuf_v_L, loc_ny, MPI_DOUBLE, nghbrs[LEFT], tag[vort], mygrid,&req16);
 		// Wait
-		//MPI_Wait(&req13, MPI_STATUS_IGNORE);
-		//MPI_Wait(&req14, MPI_STATUS_IGNORE);
-		//MPI_Wait(&req15, MPI_STATUS_IGNORE);
-		//MPI_Wait(&req16, MPI_STATUS_IGNORE);
+		MPI_Wait(&req13, MPI_STATUS_IGNORE);
+		MPI_Wait(&req14, MPI_STATUS_IGNORE);
+		MPI_Wait(&req15, MPI_STATUS_IGNORE);
+		MPI_Wait(&req16, MPI_STATUS_IGNORE);
 		// Unpacking
 		k = 0;			
 		for(int i = 0; i < (loc_nx*loc_ny) -1; i+=loc_nx){
-			s[i] = inbuf_s[k];
-			v[i] = inbuf_v[k];
+			s[i] = inbuf_s_L[k];
+			v[i] = inbuf_v_L[k];
 			k++;
 		}
 	}
@@ -385,7 +432,7 @@ void LidDrivenCavity::InteriorUpdate(){
 
 	MPI_Barrier(MPI_COMM_WORLD);
 	Communicate();
-	MPI_Barrier(MPI_COMM_WORLD);
+
 
 	// Calculation of interior vorticity at time t+dt;
 	for(int i = xstart; i<loc_nx-xend; i++){
@@ -399,7 +446,6 @@ void LidDrivenCavity::InteriorUpdate(){
 	}
 
 	v = v_new;
-	delete[] v_new;
 }
 	
 void LidDrivenCavity::MapRHS(){
@@ -559,29 +605,22 @@ void LidDrivenCavity::Integrate()
 */
 	// Caching Cholesky factorisation
 	F77NAME(dpbtrf) ('u', internal_nodes, ku, a_banded, ku+1, info);
-/*
-	// Printing A_banded for checking
-    if (rank == 0){
-        for(unsigned int i = 0; i < (ku+1) ; i++){
-            for(unsigned int j = 0; j < internal_nodes; j++){
-                cout << a_banded[i+j*(ku+1)] << " ";
-            }
-            cout << endl;
-        }
-        cout << endl;
-    }
-*/
-	double t_elapse = 0.0;
+
+	// Waiting for all processes before starting time-loop
+		
+	cout << "Rank: " << rank << "  starting time loop" << endl;	
 	// Starting time loop
+	double t_elapse = 0.0;
 	while (t_elapse < T){	
 		// Imposing Boundary Conditions
 		BoundaryConditions();
-		// Calculation of Interior Vorticity at time t
-		// Calculation of Interior Vorticity at time t + dt
+
+		// Calculation of Interior Vorticity at time t AND t+dt
 		InteriorUpdate();
 
-        // Solution of Poisson Problem to Compute Streamfunction at t + dt	
-		for (int i = 0; i < 50; i++){
+        	// Solution of Poisson Problem to Compute Streamfunction at t + dt	
+		for (int i = 0; i < 5; i++){
+			
 			// Mapping inner vorticity and boundaries of streamfunction to RHS at t+dt
 			MapRHS();
 
@@ -594,15 +633,13 @@ void LidDrivenCavity::Integrate()
 			// Updating streamfunction to neighbours
 			MPI_Barrier(MPI_COMM_WORLD);
 			Communicate();
-			MPI_Barrier(MPI_COMM_WORLD);
 		}
-		t_elapse += dt;
-
-		MPI_Barrier(MPI_COMM_WORLD);
+		
 		if(rank==0) cout << endl << endl << "Time-step: " << t_elapse << endl << endl;
-		cout <<  "Im rank: " << rank << " and I am in time-step " << t_elapse << endl;
+		t_elapse += dt;
+		MPI_Barrier(MPI_COMM_WORLD);		
 	}
-	//VMatPrintRank(0);
+	VMatPrintRank(0);
 }
 
 void LidDrivenCavity::ExportSol(){
