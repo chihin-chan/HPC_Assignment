@@ -27,10 +27,12 @@ extern "C" {
 
 using namespace std;
 
+// Default Constructor
 LidDrivenCavity::LidDrivenCavity()
 {
 }
 
+// Destructor
 LidDrivenCavity::~LidDrivenCavity()
 {
 	MPI_Barrier(MPI_COMM_WORLD);
@@ -61,12 +63,14 @@ LidDrivenCavity::~LidDrivenCavity()
 
 }
 
+// Function to store domain size Lx/Ly
 void LidDrivenCavity::SetDomainSize(double xlen, double ylen)
 { 
 	Lx = xlen;
 	Ly = ylen;
 }
 
+// Function to obtain store number of grid points Nx/Ny
 void LidDrivenCavity::SetGridSize(int nx, int ny)
 {
 	Nx = nx;
@@ -74,46 +78,45 @@ void LidDrivenCavity::SetGridSize(int nx, int ny)
 
 }
 
+// Function to store partition sizes Px/Py
 void LidDrivenCavity::SetPartitionSize(int ppx, int ppy)
 {
 	Px = ppx;
 	Py = ppy;
 
 }
+
+// Function to store dt
 void LidDrivenCavity::SetTimeStep(double deltat)
 {
 	dt = deltat;
 }
 
+// Function to store final time of simulation
 void LidDrivenCavity::SetFinalTime(double finalt)
 {
 	T = finalt;
 }
 
+// Function that stores Reynolds number
 void LidDrivenCavity::SetReynoldsNumber(double re)
 {
 	Re = re;
 }
 
+// Function that stores rank
 void LidDrivenCavity::GetRank(int rr)
 {
 	rank = rr;
 }
 
+// Function that stores sizes
 void LidDrivenCavity::GetSize(int ss)
 {
 	size = ss;
 }
-void LidDrivenCavity::MatPrint(double *x, int n)
-{
-	for(int i = 0 ; i<n; i++){
-		for(int j = 0; j<n; j++){
-			cout << x[i+j*n] <<"	" ;
-		}
-		cout << endl;
-	}
-}
 
+// Function that prints streamfunction matrix of a given rank
 void LidDrivenCavity::SMatPrintRank(int r){
 	if (rank == r){
 		cout << "Printing Streamfunction from rank: " << r << endl;
@@ -126,6 +129,7 @@ void LidDrivenCavity::SMatPrintRank(int r){
 	}
 }
 
+// Function that prints vorticity matrix of a given rank
 void LidDrivenCavity::VMatPrintRank(int r){
 	if (rank == r){
 		cout << "Printing Vorticity from rank: " << r << endl;
@@ -138,7 +142,7 @@ void LidDrivenCavity::VMatPrintRank(int r){
 	}
 }
 
-
+// Function that initialise solver settings
 void LidDrivenCavity::Initialise()
 {	
 
@@ -166,6 +170,7 @@ void LidDrivenCavity::Initialise()
 	// Defining vorticity and streafunction matrix for subdomains
     loc_nx = ceil(double(Nx)/double(Py)) + 2;
     loc_ny = ceil(double(Ny)/double(Px)) + 2;
+    // Conditional statement to store deficient matrix in the last column if Px is not a divisor of Nx
 	if(coords[1] == Py-1){
     	if(Nx%Py != 0){
         	loc_nx = (Nx % int( ceil(double(Nx)/double(Py)) )) + 2;
@@ -174,6 +179,7 @@ void LidDrivenCavity::Initialise()
         	loc_nx = Nx/Py + 2;
     	}
 	}
+    // Conditional statement to store deficient matrix in the last row if Py is not a divisor of Ny
 	if(coords[0] == Px-1){
 		if(Ny%Px != 0){
 		    loc_ny = (Ny % int( ceil(double(Ny)/double(Px)) )) + 2;
@@ -181,7 +187,8 @@ void LidDrivenCavity::Initialise()
 		else{
 		    loc_ny = Ny/Px + 2;
 		}
-	}	
+	}
+    // Allocating size of matrices
 	v = new double[loc_nx*loc_ny];
 	s = new double[loc_nx*loc_ny];
 	v_new = new double[loc_nx*loc_ny];
@@ -205,7 +212,7 @@ void LidDrivenCavity::Initialise()
 	inbuf_s_R = new double[loc_ny];
 	inbuf_v_R = new double[loc_ny];
 
-	// Initialising Vorticity, w and Streamfunction, s to zero
+	// Initialising vorticity(v), streamfunction(s) and send/recv buffers to zero
 	fill_n(s, loc_nx*loc_ny, 0.0);
 	fill_n(v, loc_nx*loc_ny, 0.0);
 	fill_n(v_new, loc_nx*loc_ny, 0.0);
@@ -225,6 +232,7 @@ void LidDrivenCavity::Initialise()
 	fill_n(outbuf_v_L, loc_ny, 0.0);
 	fill_n(inbuf_s_L, loc_ny, 0.0);
 	fill_n(inbuf_v_L, loc_ny, 0.0);
+
 	// Calculating Grid Spacing
 	dx = double(Lx) / double((Nx-1.0));
 	dy = double(Ly) / double((Ny-1.0));
@@ -232,9 +240,12 @@ void LidDrivenCavity::Initialise()
 	
 }
 
+// Function that implement boundary conditions
 void LidDrivenCavity::BoundaryConditions()
 {
+    // Speed of moving wall
 	double U = 1.0;
+
     ///////////////
     // TOP DOMAINS
     ///////////////
@@ -252,6 +263,7 @@ void LidDrivenCavity::BoundaryConditions()
 			v[i] = (s[i] - s[i+1])*2.0/dx/dx;
         }
     }
+
     /////////////////////////////////////////
     // RIGHT DOMAINS (Potentially Deficient)
     /////////////////////////////////////////
@@ -271,11 +283,14 @@ void LidDrivenCavity::BoundaryConditions()
     }
 }
 
+// Function that passes boundary points to nodes
 void LidDrivenCavity::Communicate()
 {	
 	MPI_Request req1, req2, req3, req4, req5, req6, req7, req8,
 				req9, req10, req11, req12, req13, req14, req15, req16;
-	// Sending and Receiving from DOWN Neighbours
+	////////////////////////////////////////
+    // Send/Receive to/from  DOWN Neighbours
+    ////////////////////////////////////////
 	if(nghbrs[DOWN] != -2){
 		// Packing
 		int k = 0;
@@ -309,8 +324,10 @@ void LidDrivenCavity::Communicate()
 			k++;
 		}
 	}
-
-	// Sending and Receiving from UP Neighbours
+    
+    //////////////////////////////////////
+	// Send/Receive to/from UP Neighbours
+    /////////////////////////////////////
 	if(nghbrs[UP] != -2){
 		// Packing
 		int k = 0;
@@ -343,7 +360,9 @@ void LidDrivenCavity::Communicate()
 		}
 	}
 
-	// Sending and Receiving from RIGHT Neighbours
+    /////////////////////////////////////
+	// Send/Recv to/from RIGHT Neighbours
+    /////////////////////////////////////
 	if(nghbrs[RIGHT] != -2){
 		int k = 0;
 		// Packing
@@ -375,7 +394,9 @@ void LidDrivenCavity::Communicate()
 		}
 	}
 
-	// Sending and Receiving from LEFT Neighbours
+    ////////////////////////////////////
+	// Send/Recv to/from LEFT Neighbours
+    ////////////////////////////////////
 	if(nghbrs[LEFT] != -2){
 		// Packing
 		int k = 0;
@@ -407,8 +428,9 @@ void LidDrivenCavity::Communicate()
 	}
 }
 
-void LidDrivenCavity::InteriorUpdate(){
-	
+// Function that calculates interior points of eq (10) & (11)
+void LidDrivenCavity::InteriorUpdate()
+{
 	int xstart = 1;
 	int jstart = 1;
 	int xend = 1;
@@ -425,7 +447,7 @@ void LidDrivenCavity::InteriorUpdate(){
 	if(nghbrs[LEFT] == -2){
 		xstart = 2;
 	}
-	// Calculation of interior vorticity at time t
+	// Calculation of interior vorticity at time t ------ (10)
 	for(int i = xstart; i<loc_nx-xend; i++){
 		for(int j = jstart; j<loc_ny-jend; j++){
 			v[i+loc_nx*j] = -(s[i+loc_nx*j+1] - 2.0*s[i+loc_nx*j] + s[i+loc_nx*j-1])/dx/dx
@@ -437,7 +459,7 @@ void LidDrivenCavity::InteriorUpdate(){
 	Communicate();
 
 
-	// Calculation of interior vorticity at time t+dt;
+	// Calculation of interior vorticity at time t+dt ---- (11)
 	for(int i = xstart; i<loc_nx-xend; i++){
 		for(int j = jstart; j<loc_ny-jend; j++){
 			v_new[i+loc_nx*j] = v[i+loc_nx*j] 
@@ -447,13 +469,15 @@ void LidDrivenCavity::InteriorUpdate(){
                 + (v[i+loc_nx*j+loc_nx] - 2.0*v[i+loc_nx*j] + v[i+loc_nx*j-loc_nx])/dy/dy )/Re;
 		}
 	}
+    // Updating inner vorticity points
 	for(int i = xstart; i<loc_nx-xend; i++){
 		for(int j = jstart; j<loc_ny-jend; j++){
 			v[i+loc_nx*j] = v_new[i+loc_nx*j];
 		}
 	}
 }
-	
+
+// Function that extracts the inner nodes of vorticity(w) into vector b of linear problem Ax=b	
 void LidDrivenCavity::MapRHS(){
 	int x_off = 2;
 	int y_off = 2;
@@ -502,7 +526,7 @@ void LidDrivenCavity::MapRHS(){
 	}
 }
 
-
+// Function that converts solution of Ax=b into interior nodes of streamfunction(s)
 void LidDrivenCavity::iMapRHS(){
 	int x_off = 2;
 	int y_off = 2;
@@ -529,6 +553,7 @@ void LidDrivenCavity::iMapRHS(){
 	}
 }
 
+// Integrating all the functions together
 void LidDrivenCavity::Integrate()
 {	
 
@@ -556,7 +581,6 @@ void LidDrivenCavity::Integrate()
 	double alpha = 2.0*(1.0/dx/dx + 1.0/dy/dy); // Coefficients of i,j
 	double beta_x = -1.0/dx/dx;		// Coefficients of i+/-1, j
 	double beta_y = -1.0/dy/dy;		// Coefficients of i/, j+/-1
-	double norm;				// Storing 2-norm of solution difference
 
 	int info;
 	int count = 1;
@@ -650,56 +674,4 @@ void LidDrivenCavity::Integrate()
 
 void LidDrivenCavity::ExportSol(){
 
-	MPI_Barrier(MPI_COMM_WORLD);
-	int nx = loc_nx - 2;
-	int ny = loc_ny - 2;	
-	double* s_true = new double[nx*ny];
-	double* v_true = new double[nx*ny];
-
-	// Mapping results with buffer into true solutions
-	for(int i = 0; i<nx; i++){
-		for(int j = 0; j<ny; i++){
-			s_true[i] = s[(i+1) * loc_nx*(j+1)];
-			v_true[i] = v[(i+1) * loc_nx*(j+1)];
-		}
-	}
-
-	// Array pointer to hold solutions 
-	double* stream_address;
-	if (rank == 0){ 
-		stream_address = new double[Nx*Ny];
-	}
-	MPI_Barrier(MPI_COMM_WORLD);
-	cout << "Here" << endl;
-	MPI_Gather(s_true, nx*ny, MPI_DOUBLE, stream_address, Nx*Ny, MPI_DOUBLE, 0, MPI_COMM_WORLD);	
-	cout << "Here" << endl;
-	MPI_Barrier(MPI_COMM_WORLD);
-/*
-	if (rank == 0){	
-	int start;
-	int end;
-	int proc;
-
-	ofstream sOut("streamfunction_test.txt", ios::out | ios::trunc);
-   	sOut.precision(5);
-	// Iterating down domain rows
-	for(int i=0; i<Px-1; i++){
-		// Iterating through subdomain rows
-		for(int leny = 0; leny<loc_ny-2; leny++){
-			// Define starting position of each subdomain
-			start = (loc_nx-2)*(loc_ny-1) - loc_nx + 1 - leny*loc_nx;
-			end = (loc_nx*loc_ny)-1 - loc_nx - leny*loc_nx;
-			// Iterating through subdomain cols
-			for(int j = 0+(i*Py-1); j<Py-1+(i*Py-1); j++){
-				// Iterating through cols in each subdomain
-					for(int start; start<end; start++){
-						sOut << setw(15) << stream_address[j][start] <<"," << setw(15);
-					}
-			}
-		sOut << endl;
-		}
-	}
-	sOut.close();
-	}
-*/
 }

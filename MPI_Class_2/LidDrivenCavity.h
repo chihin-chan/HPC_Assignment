@@ -16,7 +16,6 @@ public:
     void SetTimeStep(double deltat);
     void SetFinalTime(double finalt);
     void SetReynoldsNumber(double Re);
-    void MatPrint(double* x, int n);
 	void GetRank(int rr);
 	void GetSize(int ss);
 	void SMatPrintRank(int r);
