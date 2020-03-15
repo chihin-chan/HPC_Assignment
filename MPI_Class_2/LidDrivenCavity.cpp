@@ -649,18 +649,31 @@ void LidDrivenCavity::Integrate()
 }
 
 void LidDrivenCavity::ExportSol(){
+	
+	
+	int start;
+	int end;
 	ofstream sOut("streamfunction.txt", ios::out | ios::trunc);
    	sOut.precision(5);
-	sOut << setw(15) << "x"
-	     << setw(15) << "y"
-	     << setw(15) << "psi" << endl;
-	for(int j=0; j<Ny; j++){
-		for(int i=0; i<Nx; i++){
-			sOut << setw(15) << i*double(Lx/(Nx-1.0))
-			     << setw(15) << j*double(Ly/(Ny-1.0))
-			     << setw(15) << s[i+Nx*j] << endl;
-		}
+	// Iterating down domain rows
+	for(int i=0; i<Px-1; i++){
+		// Iterating through subdomain rows
+		for(int leny = 0; leny<loc_ny-2; leny++){
+			// Define starting position of each subdomain
+			start = loc_nx*(loc_ny-1) - loc_nx + 1 - leny*loc_nx;
+			end = (loc_nx*loc_ny)-1 - loc_nx - leny*loc_nx;
+			// Iterating through subdomain cols
+			for(int j = 0; j<Py-1; j++){
+				// Checking if rank coincide
+				if(coords[0] == i && coords[1] == j){
+					// Iterating through cols in each subdomain
+					for(int start; start<end; start++){
+						sOut << setw(15) << s[start] <<"," << setw(15);
+					}
+				}
+			}
 		sOut << endl;
+		}
 	}
 	sOut.close();
 }

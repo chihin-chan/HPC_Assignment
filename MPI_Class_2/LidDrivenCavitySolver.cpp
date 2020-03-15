@@ -67,7 +67,7 @@ int main(int argc, char **argv)
     solver->Integrate();
 
 	// Export Results
-	// solver->ExportSol();
+	solver->ExportSol();
 	
 	MPI_Finalize();
 	return 0;
