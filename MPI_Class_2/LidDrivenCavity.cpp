@@ -649,31 +649,57 @@ void LidDrivenCavity::Integrate()
 }
 
 void LidDrivenCavity::ExportSol(){
-	
-	
+
+	MPI_Barrier(MPI_COMM_WORLD);
+	int nx = loc_nx - 2;
+	int ny = loc_ny - 2;	
+	double* s_true = new double[nx*ny];
+	double* v_true = new double[nx*ny];
+
+	// Mapping results with buffer into true solutions
+	for(int i = 0; i<nx; i++){
+		for(int j = 0; j<ny; i++){
+			s_true[i] = s[(i+1) * loc_nx*(j+1)];
+			v_true[i] = v[(i+1) * loc_nx*(j+1)];
+		}
+	}
+
+	// Array pointer to hold solutions 
+	double* stream_address;
+	if (rank == 0){ 
+		stream_address = new double[Nx*Ny];
+	}
+	MPI_Barrier(MPI_COMM_WORLD);
+	cout << "Here" << endl;
+	MPI_Gather(s_true, nx*ny, MPI_DOUBLE, stream_address, Nx*Ny, MPI_DOUBLE, 0, MPI_COMM_WORLD);	
+	cout << "Here" << endl;
+	MPI_Barrier(MPI_COMM_WORLD);
+/*
+	if (rank == 0){	
 	int start;
 	int end;
-	ofstream sOut("streamfunction.txt", ios::out | ios::trunc);
+	int proc;
+
+	ofstream sOut("streamfunction_test.txt", ios::out | ios::trunc);
    	sOut.precision(5);
 	// Iterating down domain rows
 	for(int i=0; i<Px-1; i++){
 		// Iterating through subdomain rows
 		for(int leny = 0; leny<loc_ny-2; leny++){
 			// Define starting position of each subdomain
-			start = loc_nx*(loc_ny-1) - loc_nx + 1 - leny*loc_nx;
+			start = (loc_nx-2)*(loc_ny-1) - loc_nx + 1 - leny*loc_nx;
 			end = (loc_nx*loc_ny)-1 - loc_nx - leny*loc_nx;
 			// Iterating through subdomain cols
-			for(int j = 0; j<Py-1; j++){
-				// Checking if rank coincide
-				if(coords[0] == i && coords[1] == j){
-					// Iterating through cols in each subdomain
+			for(int j = 0+(i*Py-1); j<Py-1+(i*Py-1); j++){
+				// Iterating through cols in each subdomain
 					for(int start; start<end; start++){
-						sOut << setw(15) << s[start] <<"," << setw(15);
+						sOut << setw(15) << stream_address[j][start] <<"," << setw(15);
 					}
-				}
 			}
 		sOut << endl;
 		}
 	}
 	sOut.close();
+	}
+*/
 }
