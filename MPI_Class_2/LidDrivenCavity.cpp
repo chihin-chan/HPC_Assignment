@@ -669,9 +669,90 @@ void LidDrivenCavity::Integrate()
 		t_elapse += dt;
 		MPI_Barrier(MPI_COMM_WORLD);		
 	}
-	VMatPrintRank(0);
+	VMatPrintRank(1);
 }
 
 void LidDrivenCavity::ExportSol(){
+   
+    // Declaring a pointer of pointers to hold all values of stream function
+    double* vort_add = nullptr;
+    double* stream_add = nullptr;
+    int nnx = loc_nx - 2;
+    int nny = loc_ny - 2;
+    int* nx = nullptr;
+    int* ny = nullptr;
 
+    double* v_int = new double[nnx*nny];
+    double* s_int = new double[nnx*nny];
+
+    for(int i = 0; i< nnx; i++){
+        for(int j = 0; j<nny; j++){
+            v_int[i+j*nnx] = v[(i+1) + loc_nx*(j+1)];
+            s_int[i+j*nnx] = s[(i+1) + loc_nx*(j+1)];
+        }
+    }
+
+     if(rank==0){
+        nx = new int[size];
+        ny = new int[size];
+        vort_add = new double[Nx*Ny];
+        stream_add = new double[Nx*Ny];
+    }
+   
+    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Gather(&nnx, 1, MPI_INT, nx, 1, MPI_INT, 0, MPI_COMM_WORLD); 
+    MPI_Gather(&nny, 1, MPI_INT, ny, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    if(rank == 0){
+        for(int i = 0; i<size; i++){
+            cout << "Rank: " << i <<" has loc_nx of: " << nx[i] << endl;
+        }
+    }
+    MPI_Gather(v_int, nnx*nny, MPI_DOUBLE, vort_add, nnx*nny, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Gather(s_int, nnx*nny, MPI_DOUBLE, stream_add, nnx*nny, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+   
+    if (rank == 0){
+       ofstream sOut("streamfunction.txt", ios::out | ios::trunc);
+       ofstream vOut("vorticity.txt", ios::out | ios::trunc);
+       sOut.precision(5);
+       vOut.precision(5);
+ 
+        int offset = 0;
+        int rank_off = 0;
+        
+        // Moving stepping to the next rank row
+        for(int c = 0; c<size; c+=Py){
+            // cout << "Index c: " << c << endl;
+            // Printing next lower row in the rank to the last in ny
+            for(int j = 0; j<ny[c]; j++){
+                // cout << "Index j; " << j << endl;
+                offset = 0;
+                // Printing top row on the next rank to the last in Py
+                for(int k = 0; k < Py; k++){
+                    // Printing top row of rank = 0
+                    for(int i = offset + nx[k+c]*(ny[k+c]-1) - j*nx[c] + rank_off;
+                        i < offset + nx[k+c]*(ny[k+c]) - j*nx[c] + rank_off;
+                        i++){
+                        // cout << "Index: i " << i << endl;
+                        vOut << setw(12) << vort_add[i] <<"," << setw(12);
+                        sOut << setw(12) << stream_add[i] <<"," << setw (12);
+                    }
+                offset += nx[k] * ny[k];
+                }
+            vOut << endl;
+            sOut << endl;
+            }
+            // Distance to offset to more to next rank row
+            for(int i = 0; i<Py; i++){
+                rank_off += nx[i]*ny[i];
+            }
+        }
+        vOut.close();
+        sOut.close();
+    }
+    /*
+    if(rank == 0){
+       for(int i=0; i<Nx*Ny; i++){
+            cout << "index i: " << i << "Vorticity: " << vort_add[i] << endl;
+        }
+    }*/
 }
