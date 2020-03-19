@@ -669,7 +669,7 @@ void LidDrivenCavity::Integrate()
 		t_elapse += dt;
 		MPI_Barrier(MPI_COMM_WORLD);		
 	}
-	VMatPrintRank(1);
+	SMatPrintRank(0);
 }
 
 void LidDrivenCavity::ExportSol(){
@@ -704,12 +704,13 @@ void LidDrivenCavity::ExportSol(){
     MPI_Gather(&nny, 1, MPI_INT, ny, 1, MPI_INT, 0, MPI_COMM_WORLD);
     if(rank == 0){
         for(int i = 0; i<size; i++){
-            cout << "Rank: " << i <<" has loc_nx of: " << nx[i] << endl;
+            cout << "Rank: " << i <<" has nx: " << nx[i] << " and ny: " << ny[i] <<  endl;
         }
     }
+    MPI_Barrier(MPI_COMM_WORLD);
     MPI_Gather(v_int, nnx*nny, MPI_DOUBLE, vort_add, nnx*nny, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     MPI_Gather(s_int, nnx*nny, MPI_DOUBLE, stream_add, nnx*nny, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-   
+    MPI_Barrier(MPI_COMM_WORLD); 
     if (rank == 0){
        ofstream sOut("streamfunction.txt", ios::out | ios::trunc);
        ofstream vOut("vorticity.txt", ios::out | ios::trunc);
@@ -721,22 +722,24 @@ void LidDrivenCavity::ExportSol(){
         
         // Moving stepping to the next rank row
         for(int c = 0; c<size; c+=Py){
-            // cout << "Index c: " << c << endl;
+             cout << "Index c: " << c << endl;
             // Printing next lower row in the rank to the last in ny
             for(int j = 0; j<ny[c]; j++){
-                // cout << "Index j; " << j << endl;
+                cout << "Index j; " << j << endl;
+                cout << "j*nx[j]: " << j*nx[j] << endl;
                 offset = 0;
                 // Printing top row on the next rank to the last in Py
                 for(int k = 0; k < Py; k++){
                     // Printing top row of rank = 0
-                    for(int i = offset + nx[k+c]*(ny[k+c]-1) - j*nx[c] + rank_off;
-                        i < offset + nx[k+c]*(ny[k+c]) - j*nx[c] + rank_off;
+                    for(int i = offset + nx[k+c]*(ny[k+c]-1) - j*nx[k] + rank_off;
+                        i < offset + nx[k+c]*(ny[k+c]) - j*nx[k] + rank_off;
                         i++){
-                        // cout << "Index: i " << i << endl;
-                        vOut << setw(12) << vort_add[i] <<"," << setw(12);
-                        sOut << setw(12) << stream_add[i] <<"," << setw (12);
+                        cout << "Index: i " << i <<",   SF: " << stream_add[i] << endl;
+                        vOut << setw(12) << vort_add[i] << setw(12);
+                        sOut << setw(12) << stream_add[i] << setw (12);
                     }
-                offset += nx[k] * ny[k];
+                offset += nx[k+c] * ny[k+c];
+                cout << "offset: " << offset<< endl << endl;
                 }
             vOut << endl;
             sOut << endl;
@@ -749,10 +752,10 @@ void LidDrivenCavity::ExportSol(){
         vOut.close();
         sOut.close();
     }
-    /*
+    
     if(rank == 0){
        for(int i=0; i<Nx*Ny; i++){
-            cout << "index i: " << i << "Vorticity: " << vort_add[i] << endl;
+            cout << "index i: " << i << "SF: " << stream_add[i] << endl;
         }
-    }*/
+    }
 }
