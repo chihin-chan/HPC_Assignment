@@ -1,4 +1,5 @@
 #include "LidDrivenCavity.h"
+#include "PoissonSolver.h"
 #include <iostream>
 #include <cstring>
 #include <cblas.h>
@@ -6,8 +7,6 @@
 #include <fstream>
 #include <iomanip>
 #include <mpi.h>
-#include <vector>
-#include <chrono>
 #include <thread>
 
 #define UP    0
@@ -18,6 +17,25 @@
 #define vort  1
 #define F77NAME(x) x##_
 extern "C" {
+
+	void Cblacs_pinfo(int*, int*);
+	void Cblacs_get(int, int, int*);
+	void Cblacs_gridinit(int*, const char*, int, int);
+	void Cblacs_gridinfo(int , int*, int*, int*, int*);
+	void Cblacs_gridexit(int);
+	void Cblacs_barrier(int, const char*);
+	   
+	void F77NAME(pdpbtrf)(const char& UPLO, const int& N, const int& BW,
+						  double* A,  const int& JA,  int* DESCA,
+						  double* AF, int& LAF, double* WORK, 
+						  const int& LWORK, int* INFO);				             		 
+		        		 
+	 void F77NAME(pdpbtrs)(const char& UPLO, const int& N, const int& BW,
+						  const int& NRHS, double* A,  const int& JA,  
+						  int* DESCA, double* B,  const int& IB, 
+						  int* DESCB, double* AF, int& LAF, 
+						  double* WORK, const int& LWORK, int* INFO);     
+	
 	void F77NAME(dpbtrf) (const char& UPLO, const int& n, const int& kd,
 		       	      const double* ab, const int& LDAB, int& info);
 	void F77NAME(dpbtrs) (const char& UPLO, const int& n, const int& KD,
@@ -560,6 +578,7 @@ void LidDrivenCavity::Integrate()
 	int internal_nodes;
 	int ku;
 	cout << "Rank: " << rank << "	loc_nx: " << loc_nx << "	loc_ny: " << loc_ny << endl;
+
 	// Initialising properties of banded matrix A, to solve Ax = b
 	int x_off = 2;
 	int y_off = 2;

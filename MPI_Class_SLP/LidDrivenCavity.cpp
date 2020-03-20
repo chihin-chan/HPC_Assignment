@@ -580,7 +580,7 @@ void LidDrivenCavity::Integrate()
 
 	// Defining variables for parallelisation
 	int N = (Nx-2)*(Ny-2);
-	int NB = ceil(double(internal_nodes/size));
+	int NB = ceil(double(N)/double(size));
 	int BW = (Nx-2);
 	int lda = BW+1;
 	int nrhs = 1;
@@ -655,7 +655,7 @@ void LidDrivenCavity::Integrate()
 			// Filling diagonal elements
 			A[i*lda+BW] = alpha;
 			// Filling superdiagonals of L/R Neighbours
-			if(rank*NB%(Nx-2)){
+			if((i+rank*NB)%(Nx-2) == 0){
 				A[i*lda + BW -1] = 0;
 			}
 			else{
@@ -678,7 +678,9 @@ void LidDrivenCavity::Integrate()
 	} 
 
 
- 	
+ 	Cblacs_barrier(ctx, "All");
+	
+	F77NAME(pdpbtrf) ('U', N, BW, A, JA, desca, AF, LAF, workf, lworkf, &info);
 
 	cout << "Rank: " << rank << "	loc_nx: " << loc_nx << "	loc_ny: " << loc_ny << endl;
 

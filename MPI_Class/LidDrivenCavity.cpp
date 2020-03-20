@@ -347,8 +347,6 @@ void LidDrivenCavity::InteriorUpdate(){
 	if(nghbrs[LEFT] == -2){
 		xstart = 2;
 	}
-	if(rank==0)cout<<"Before first interior"<<endl;
-	VMatPrintRank(0);
 	// Calculation of interior vorticity at time t
 	for(int i = xstart; i<loc_nx-xend; i++){
 		for(int j = jstart; j<loc_ny-jend; j++){
@@ -357,9 +355,7 @@ void LidDrivenCavity::InteriorUpdate(){
 		}
 	}
 	Communicate();
-	VMatPrintRank(0);
 
-	if(rank==0)cout<<"After first interior"<<endl;
 	// Calculation of interior vorticity at time t+dt;
 	for(int i = xstart; i<loc_nx-xend; i++){
 		for(int j = jstart; j<loc_ny-jend; j++){
@@ -372,8 +368,6 @@ void LidDrivenCavity::InteriorUpdate(){
 	}
 
 	v = v_new;
-	if(rank==0)cout<<"After second interior"<<endl;
-	VMatPrintRank(0);
 	delete[] v_new;
 }
 	
@@ -518,7 +512,7 @@ void LidDrivenCavity::Integrate()
         count++;
 	}
 	
-
+/*
 	// Printing A_banded for checking
     if (rank == 0){
         for(unsigned int i = 0; i < (ku+1) ; i++){
@@ -529,10 +523,10 @@ void LidDrivenCavity::Integrate()
         }
         cout << endl;
     }
-
+*/
 	// Caching Cholesky factorisation
 	F77NAME(dpbtrf) ('u', internal_nodes, ku, a_banded, ku+1, info);
-
+/*
 	// Printing A_banded for checking
     if (rank == 0){
         for(unsigned int i = 0; i < (ku+1) ; i++){
@@ -543,14 +537,13 @@ void LidDrivenCavity::Integrate()
         }
         cout << endl;
     }
-
+*/
 	double t_elapse = 0.0;
 	// Starting time loop
 	while (t_elapse < T){	
 		// Imposing Boundary Conditions
         MPI_Barrier(mygrid);
 		BoundaryConditions();	
-
         // Calculation of Interior Vorticity at time t
 		// Calculation of Interior Vorticity at time t + dt
         MPI_Barrier(mygrid);
@@ -569,8 +562,7 @@ void LidDrivenCavity::Integrate()
 			Communicate();
 		}
 		t_elapse += dt;
-		SMatPrintRank(0);
-		cout << "Time-step: " << t_elapse << endl;	
+	if(rank==0)cout << "Time-step: " << t_elapse << endl;	
 	}
 }
 

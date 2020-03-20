@@ -32,11 +32,15 @@ public:
 	void iMapRHS();
     // Add any other public functions
 
+	friend class PoissonSolver;
+
 private:
     double* v = nullptr;
     double* s = nullptr;
     double* rhs = nullptr;
     double* v_new = nullptr;
+	
+	// Communication Pointers
     double* outbuf_s_D = nullptr;
     double* outbuf_v_D = nullptr;
     double* inbuf_s_D = nullptr;

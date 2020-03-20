@@ -197,4 +197,19 @@ void LidDrivenCavity::ExportSol(){
 		sOut << endl;
 	}
 	sOut.close();
+	
+    ofstream vOut("vorticity.txt", ios::out | ios::trunc);
+	vOut.precision(5);
+	vOut << setw(15) << "x"
+	     << setw(15) << "y"
+	     << setw(15) << "w" << endl;
+	for(int j=0; j<Ny; j++){
+		for(int i=0; i<Nx; i++){
+			vOut << setw(15) << i*double(Lx/(Nx-1.0))
+			     << setw(15) << j*double(Ly/(Ny-1.0))
+			     << setw(15) << v[i+Nx*j] << endl;
+		}
+		vOut << endl;
+	}
+	vOut.close();
 }
