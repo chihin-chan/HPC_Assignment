@@ -586,10 +586,10 @@ void LidDrivenCavity::Integrate()
 	int nrhs = 1;
 	int JA = 1;
 	int LA = lda*NB;
-	int LAF = (NB+2*BW);
+	int LAF = (NB+2*BW)*BW;
 	int lworkf = BW*BW;
 	int lworks = nrhs*BW;
-
+	int info;
 	// Arrays
 	double* A	= new double[LA];
 	double* AF	= new double[LAF];
@@ -622,7 +622,12 @@ void LidDrivenCavity::Integrate()
 	desca[4] = 0;
 	desca[5] = lda;
 	desca[6] = 0;
-
+	if(rank==0){
+	for(int i = 0; i<7; i++){
+		cout << desca[i] << endl;
+	}
+	}
+		
 	// Descriptors for RHS vector B
 	int* descb = new int[7];
 	descb[0] = 502;
@@ -681,9 +686,10 @@ void LidDrivenCavity::Integrate()
  	Cblacs_barrier(ctx, "All");
 	
 	F77NAME(pdpbtrf) ('U', N, BW, A, JA, desca, AF, LAF, workf, lworkf, &info);
-
+	cout << "Info: " << info << endl;
 	cout << "Rank: " << rank << "	loc_nx: " << loc_nx << "	loc_ny: " << loc_ny << endl;
 
+	// 
 	// Initialising properties of banded matrix A, to solve Ax = b
 	int x_off = 2;
 	int y_off = 2;
@@ -704,7 +710,6 @@ void LidDrivenCavity::Integrate()
 	int k = (ku+1)*internal_nodes;	  // Size of banded matrix (ku+kl+1)*N
 
 
-	int info;
 	int count = 1;
 	// a_banded holds matrix A in banded format
 	double* a_banded = new double[k];
