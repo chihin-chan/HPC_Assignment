@@ -232,7 +232,7 @@ void LidDrivenCavity::Initialise()
 
 	// Initialising vorticity(v), streamfunction(s) and send/recv buffers to zero
 	fill_n(s, loc_nx*loc_ny, 0.0);
-	fill_n(v, loc_nx*loc_ny, 0.0);
+	fill_n(v, loc_nx*loc_ny, 10.0);
 	fill_n(v_new, loc_nx*loc_ny, 0.0);
 	fill_n(outbuf_s_U, loc_nx, 0.0);
 	fill_n(outbuf_v_U, loc_nx, 0.0);
@@ -585,6 +585,7 @@ void LidDrivenCavity::Integrate()
 	int lda = BW+1;
 	int nrhs = 1;
 	int JA = 1;
+	int IB = 1;
 	int LA = lda*NB;
 	int LAF = (NB+2*BW)*BW;
 	int lworkf = BW*BW;
@@ -595,12 +596,16 @@ void LidDrivenCavity::Integrate()
 	double* AF	= new double[LAF];
 	int* ipiv	= new int[NB];
 	double* b	= new double[NB];
+	int b_rank_L	= ceil(double(Nx)/Py) * ceil(double(Ny)/Px);
+	cout << "length of b rank; " << b_rank_L << endl;
+	double* b_rank	= new double[b_rank_L];
 	double* workf = new double[lworkf];
 	double* works = new double[lworks];
 
 	// Initialisation
 	fill_n(A, LA, 0.0);
 	fill_n(b, NB, 0.0);
+	fill_n(b_rank, b_rank_L, 0.0);
 	
 	// Initialising BLACS
 	int myrow;
@@ -622,11 +627,6 @@ void LidDrivenCavity::Integrate()
 	desca[4] = 0;
 	desca[5] = lda;
 	desca[6] = 0;
-	if(rank==0){
-	for(int i = 0; i<7; i++){
-		cout << desca[i] << endl;
-	}
-	}
 		
 	// Descriptors for RHS vector B
 	int* descb = new int[7];
@@ -637,19 +637,8 @@ void LidDrivenCavity::Integrate()
 	descb[4] = 0;
 	descb[5] = NB;
 	descb[6] = 0;
-	
-	int* nx;
-	int* ny;
-	
-	if(rank==0){
-        nx = new int[size];
-        ny = new int[size];
-    }
-   
-    MPI_Barrier(MPI_COMM_WORLD);
-    MPI_Gather(&nx, 1, MPI_INT, nx, 1, MPI_INT, 0, MPI_COMM_WORLD); 
-    MPI_Gather(&ny, 1, MPI_INT, ny, 1, MPI_INT, 0, MPI_COMM_WORLD);
-
+    	MPI_Barrier(MPI_COMM_WORLD);
+	cout << "constructing a banded" << endl;
 	// Constructing banded matrix A
 	double alpha = 2.0*(1.0/dx/dx + 1.0/dy/dy); // Coefficients of i,j
 	double beta_x = -1.0/dx/dx;		// Coefficients of i+/-1, j
@@ -672,24 +661,122 @@ void LidDrivenCavity::Integrate()
 			}
 		}
 	}
-	
-	if (rank == 0){
-		for(int i = 0 ; i< lda; i++){
-			for(int j = 0; j<NB; j++){
-				cout << setw(15) << A[i+j*lda] << setw(15);
+	MPI_Barrier(MPI_COMM_WORLD);
+/*	// Prints banded matrix A
+	if (rank == 5){
+		for(int i = 0; i < lda; i++){
+			for(int j = 0; j < NB; j++){
+				cout << setw(8) << A[i+lda*j] << setw(8);
 			}
-		cout << endl;
+			cout << endl;
 		}
-	} 
-
-
- 	Cblacs_barrier(ctx, "All");
-	
+	}
+*/
 	F77NAME(pdpbtrf) ('U', N, BW, A, JA, desca, AF, LAF, workf, lworkf, &info);
 	cout << "Info: " << info << endl;
 	cout << "Rank: " << rank << "	loc_nx: " << loc_nx << "	loc_ny: " << loc_ny << endl;
 
-	// 
+	// Consolidating all of vorticity into b_rank vectors
+	int b_nx = ceil(double(Nx)/Py);
+       	int b_ny = ceil(double(Ny)/Px);
+	int b_scalx = b_nx;
+	int b_scaly = b_ny;
+	cout << "Im rank: " << rank << "	b_nx: " << b_nx << " 	b_ny: " << b_ny << endl;
+	int x_begin = 0;
+        int y_begin = 0;
+	int x_end = 0;
+	int y_end = 0;
+	if (nghbrs[LEFT] == -2){
+		x_begin = 1;
+	}
+	if (nghbrs[UP] == -2){
+		y_end = 1;
+	}
+	if (nghbrs[DOWN] == -2){
+		y_begin = 1;
+		if (Ny%b_ny != 0){
+			y_begin += b_ny - Ny%b_ny;
+		}
+	}
+	if (nghbrs[RIGHT] == -2){
+		x_end = 1;
+		if (Nx%b_nx != 0){
+			x_end += b_nx - Nx%b_nx;
+		}
+	}
+
+	b_scalx -= (x_end+x_begin);
+	b_scaly -= (y_end+y_begin);
+
+	int c = 0;
+	for(int j = y_begin; j < b_ny-y_end; j++){
+		for(int i = x_begin; i < b_nx-x_end; i++){
+			b_rank[c] = v[i + j*b_nx];	
+			c++;
+		}
+	}
+
+	double* b_cart;
+	if(rank == 0){
+		b_cart = new double[b_rank_L*size];
+	}
+	MPI_Barrier(MPI_COMM_WORLD);
+	// Storing vorticity of subdomains into global domain b_cart in catersian form
+	MPI_Gather(b_rank, b_rank_L, MPI_DOUBLE, b_cart, b_rank_L, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	
+	if (rank == 0) {
+		for (int i = 0 ; i < size*b_rank_L; i++){
+			cout << "Index : " << i <<"	b_cart: " <<  b_cart[i] << endl;
+		}
+	}	
+	
+	// Converting global b vecotr b_cart into scalapack from b_scal
+	double* b_scal;
+	int* b_scal_nx;
+	int* b_scal_ny;
+	if (rank == 0){
+		b_scal_nx = new int[size];
+		b_scal_ny = new int[size];
+		b_scal = new double[NB*size];
+	}
+	cout << "Im rank; " << rank<< "	scal_nx: " << b_scalx<< "	scal_ny: " << b_scaly << endl;
+	MPI_Barrier(MPI_COMM_WORLD);
+	MPI_Gather(&b_scalx, 1, MPI_INT, b_scal_nx, 1, MPI_INT, 0, MPI_COMM_WORLD);
+	MPI_Gather(&b_scaly, 1, MPI_INT, b_scal_ny, 1, MPI_INT, 0, MPI_COMM_WORLD);
+	MPI_Barrier(MPI_COMM_WORLD);
+	if (rank == 0){
+		int offset;
+		int rank_off = 0;
+		int count = 0;
+		for(int c = 0; c < size; c+=Py){	
+			for(int k = 0; k<b_scal_ny[c]; k++){
+				offset = 0;
+				for(int j = 0 ; j < Py; j++){
+					for(int i = b_scal_nx[j+c]*(b_scal_ny[j+c]-1) + offset - k*b_scal_nx[j] + rank_off;
+						i < b_scal_nx[j+c]*b_scal_ny[j+c] + offset - k*b_scal_nx[j] + rank_off;
+						i++){
+						b_scal[count] = b_cart[i];
+			
+						cout <<"Count: " << count <<"	B_scal: " << b_scal[count] <<  endl;
+						count++;
+					}
+					offset += b_rank_L;
+				}
+				cout << endl;
+			}
+			for(int i = 0; i<Py; i++){
+				rank_off += b_rank_L;
+			}
+		}
+
+	}
+
+	// Scattering into b for parallel solve
+	MPI_Scatter(&b_scal[NB*rank], NB, MPI_DOUBLE, b, NB, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+	// Solving
+	F77NAME(pdpbtrs) ('U', N, BW, nrhs, A, JA, desca,b, IB, descb, AF, LAF, works, lworks, &info);
+	cout << "Im rank: " << rank << "	info: " << info << endl;
 	// Initialising properties of banded matrix A, to solve Ax = b
 	int x_off = 2;
 	int y_off = 2;
@@ -765,10 +852,10 @@ void LidDrivenCavity::Integrate()
 
 	// Waiting for all processes before starting time-loop
 		
-	cout << "Rank: " << rank << "  starting time loop" << endl;	
 	// Starting time loop
 	double t_elapse = 0.0;
 	while (t_elapse < T){	
+		
 		// Imposing Boundary Conditions
 		BoundaryConditions();
 
@@ -796,7 +883,8 @@ void LidDrivenCavity::Integrate()
 		t_elapse += dt;
 		MPI_Barrier(MPI_COMM_WORLD);		
 	}
-	SMatPrintRank(0);
+
+	//SMatPrintRank(0);
 }
 
 void LidDrivenCavity::ExportSol(){
