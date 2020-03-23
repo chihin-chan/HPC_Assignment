@@ -29,7 +29,11 @@ public:
     void Integrate();
     void ExportSol();
 	void MapRHS();
-	void iMapRHS();
+	void CholFact();
+	void ScalInit();
+	void CartToScal();
+	void ScalToCart();
+	void MapSF();
     // Add any other public functions
 
 	friend class PoissonSolver;
@@ -58,6 +62,7 @@ private:
     double* inbuf_s_L = nullptr;
     double* inbuf_v_L = nullptr;
 
+	double U;
     double dt;
     double T;
     int    Nx;
@@ -81,5 +86,51 @@ private:
 	int coords[2];
 	int tag[2] = {0,1};
 	MPI_Comm mygrid;
+
+	// Scalapack variables
+	int N;
+	int NB;
+	int BW;
+	int lda;
+	int nrhs;
+	int JA;
+	int IB;
+	int LA;
+	int LAF;
+	int lworkf;
+	int lworks;
+	int info;
+	int myrow;
+	int mycol;
+	int ncol;
+	int nrow;
+	int ctx;
+	
+	
+	// Arrays for scalapack
+	double* A;	// Stores banded matrix A in blocks
+	double* AF;
+	double* b;
+	double* b_rank;
+	double* b_cart;
+	double* b_scal;
+	double* workf;
+	double* works;
+	int* desca;
+	int* descb;
+	int* ipiv;
+	int* b_scal_nx;
+	int* b_scal_ny;
+	int b_nx;
+	int b_ny;
+	int b_rank_L;
+	int b_scalx;
+	int b_scaly;
+	int x_begin;
+	int x_end;
+	int y_begin;
+	int y_end;
+	int counter;
+	
 };
 

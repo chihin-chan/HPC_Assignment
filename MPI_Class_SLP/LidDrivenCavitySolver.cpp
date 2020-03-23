@@ -65,10 +65,10 @@ int main(int argc, char **argv)
 	
     // Run the solver
     solver->Integrate();
+	MPI_Barrier(MPI_COMM_WORLD);
 
 	// Export Results
-	//solver->ExportSol();
-	
+	// solver->ExportSol();
 	MPI_Finalize();
 	return 0;
 }

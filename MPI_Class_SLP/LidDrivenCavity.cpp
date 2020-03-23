@@ -9,6 +9,9 @@
 #include <mpi.h>
 #include <thread>
 
+#include <thread>
+#include <chrono>
+
 #define UP    0
 #define DOWN  1
 #define LEFT  2
@@ -53,7 +56,6 @@ LidDrivenCavity::LidDrivenCavity()
 // Destructor
 LidDrivenCavity::~LidDrivenCavity()
 {
-	MPI_Barrier(MPI_COMM_WORLD);
 	delete[] v;
 	delete[] s;
 	delete[] v_new;
@@ -78,6 +80,20 @@ LidDrivenCavity::~LidDrivenCavity()
 	delete [] inbuf_s_R;
 	delete [] inbuf_v_R;
 
+
+	delete[] A;
+	delete[] AF;
+	delete[] b;
+	delete[] b_rank;
+	delete[] b_cart;
+	delete[] b_scal;
+	delete[] workf;
+	delete[] works;
+	delete[] desca;
+	delete[] descb;
+	delete[] ipiv;
+	delete[] b_scal_nx;
+	delete[] b_scal_ny;
 
 }
 
@@ -232,7 +248,7 @@ void LidDrivenCavity::Initialise()
 
 	// Initialising vorticity(v), streamfunction(s) and send/recv buffers to zero
 	fill_n(s, loc_nx*loc_ny, 0.0);
-	fill_n(v, loc_nx*loc_ny, 10.0);
+	fill_n(v, loc_nx*loc_ny, 0.0);
 	fill_n(v_new, loc_nx*loc_ny, 0.0);
 	fill_n(outbuf_s_U, loc_nx, 0.0);
 	fill_n(outbuf_v_U, loc_nx, 0.0);
@@ -255,14 +271,15 @@ void LidDrivenCavity::Initialise()
 	dx = double(Lx) / double((Nx-1.0));
 	dy = double(Ly) / double((Ny-1.0));
 	MPI_Barrier(MPI_COMM_WORLD);
+
+	// Speed of Moving Wall
+	U = 1.0;
 	
 }
 
 // Function that implement boundary conditions
 void LidDrivenCavity::BoundaryConditions()
 {
-    // Speed of moving wall
-	double U = 1.0;
 
     ///////////////
     // TOP DOMAINS
@@ -476,7 +493,6 @@ void LidDrivenCavity::InteriorUpdate()
 	MPI_Barrier(MPI_COMM_WORLD);
 	Communicate();
 
-
 	// Calculation of interior vorticity at time t+dt ---- (11)
 	for(int i = xstart; i<loc_nx-xend; i++){
 		for(int j = jstart; j<loc_ny-jend; j++){
@@ -497,129 +513,76 @@ void LidDrivenCavity::InteriorUpdate()
 
 // Function that extracts the inner nodes of vorticity(w) into vector b of linear problem Ax=b	
 void LidDrivenCavity::MapRHS(){
-	int x_off = 2;
-	int y_off = 2;
 	int x_start = 1;
+	int x_end = 1;
 	int y_start = 1;
-	if (nghbrs[UP] == -2){
-		y_off += 1;
+	int y_end = 1;
+	if(nghbrs[LEFT] == -2){
+		x_start += 1;
 	}
+	if(nghbrs[RIGHT] == -2){
+		x_end += 1;
+	}
+	if(nghbrs[UP] == -2){
+		y_end += 1;
+	}	
 	if (nghbrs[DOWN] == -2){
-		y_off += 1;
-		y_start = 2;
+		y_start += 1;
 	}
-	if (nghbrs[RIGHT] == -2){
-		x_off += 1;
-	}
-	if (nghbrs[LEFT] == -2){
-		x_off += 1;
-		x_start = 2;
-	}
-
-	for(int i = 0; i < loc_nx-x_off; i++){
-		for(int j = 0; j < loc_ny-y_off; j++){
-			rhs[i+j*(loc_nx-x_off)] = v[(i+x_start) + loc_nx*(j+y_start)];
-            // Subtracting streamfunction on left boundary
-			if (i==0){
-				rhs[i+j*(loc_nx-x_off)] = rhs[i+j*(loc_nx-x_off)] 
-				+ s[(i+x_start) + loc_nx*(j+y_start) - 1]/dx/dx;
-				
-			}
-			// Subtracting streamfunction on bottom boundary
-			if (j==0){
-				rhs[i+j*(loc_nx-x_off)] = rhs[i+j*(loc_nx-x_off)] 
-				+ s[(i+x_start) + loc_nx*(j+y_start) - loc_nx]/dy/dy;
-			}
-			// Subtracting streamfunction on right boundary
-			if (i == loc_nx-x_off-1){
-				rhs[i+j*(loc_nx-x_off)] = rhs[i+j*(loc_nx-x_off)] 
-				+ s[(i+x_start) + loc_nx*(j+y_start) + 1]/dx/dx;
-			}	
-			// Subtracting streamfunction on top boundary
-			if (j == loc_ny-y_off-1){
-				rhs[i+j*(loc_nx-x_off)] = rhs[i+j*(loc_nx-x_off)] 
-				+ s[(i+x_start) + loc_nx*(j+y_start) + loc_nx]/dy/dy;
-			}
+	int c = 0;
+	for(int j = y_start; j < loc_ny-y_end; j++){
+		for(int i = x_start; i < loc_nx-x_end; i++){
+			b_rank[c] = v[i + j*loc_nx];
+		//	if (rank==size-1) cout << "Index: " << i+j*loc_nx << endl;
+			c++;
 		}
 	}
 }
 
-// Function that converts solution of Ax=b into interior nodes of streamfunction(s)
-void LidDrivenCavity::iMapRHS(){
-	int x_off = 2;
-	int y_off = 2;
-	int x_start = 1;
-	int y_start = 1;
-	if (nghbrs[UP] == -2){
-		y_off += 1;
-	}
-	if (nghbrs[DOWN] == -2){
-		y_off += 1;
-		y_start = 2;
-	}
-	if (nghbrs[RIGHT] == -2){
-		x_off += 1;
-	}
-	if (nghbrs[LEFT] == -2){
-		x_off += 1;
-		x_start = 2;
-	}
-	for(int i = 0; i < loc_nx-x_off; i++){
-		for(int j = 0; j < loc_ny-y_off; j++){
-			s[(i+x_start) + loc_nx*(j+y_start)] = rhs[i+j*(loc_nx-x_off)];
-		}
-	}
-}
 
-// Integrating all the functions together
-void LidDrivenCavity::Integrate()
-{	
-
-	int internal_nodes;
-	int ku;
-
+void LidDrivenCavity::ScalInit(){
 	// Defining variables for parallelisation
-	int N = (Nx-2)*(Ny-2);
-	int NB = ceil(double(N)/double(size));
-	int BW = (Nx-2);
-	int lda = BW+1;
-	int nrhs = 1;
-	int JA = 1;
-	int IB = 1;
-	int LA = lda*NB;
-	int LAF = (NB+2*BW)*BW;
-	int lworkf = BW*BW;
-	int lworks = nrhs*BW;
-	int info;
+	N = (Nx-2)*(Ny-2);
+	NB = ceil(double(N)/double(size));
+	BW = (Nx-2);
+	lda = BW+1;
+	nrhs = 1;
+	JA = 1;
+	IB = 1;
+	LA = lda*NB;
+	LAF = (NB+2*BW)*BW;
+	lworkf = BW*BW;
+	lworks = nrhs*BW;
+	
+
 	// Arrays
-	double* A	= new double[LA];
-	double* AF	= new double[LAF];
-	int* ipiv	= new int[NB];
-	double* b	= new double[NB];
-	int b_rank_L	= ceil(double(Nx)/Py) * ceil(double(Ny)/Px);
-	cout << "length of b rank; " << b_rank_L << endl;
-	double* b_rank	= new double[b_rank_L];
-	double* workf = new double[lworkf];
-	double* works = new double[lworks];
+	b_nx = ceil(double(Nx)/Py);
+    b_ny = ceil(double(Ny)/Px);
+	b_rank_L = b_nx*b_ny;
+	A = new double[LA];
+	AF = new double[LAF];
+	ipiv = new int[NB];
+	b = new double[NB];
+	b_rank	= new double[b_rank_L];
+	workf = new double[lworkf];
+	works = new double[lworks];
 
 	// Initialisation
 	fill_n(A, LA, 0.0);
+	fill_n(AF, LAF, 0.0);
 	fill_n(b, NB, 0.0);
 	fill_n(b_rank, b_rank_L, 0.0);
 	
 	// Initialising BLACS
-	int myrow;
-	int mycol;
-	int ncol = size;
-	int nrow = 1;
-	int ctx;
+	ncol = size;
+	nrow = 1;
 	Cblacs_pinfo(&rank, &size);
 	Cblacs_get(0, 0, &ctx);
 	Cblacs_gridinit(&ctx, "Row_Major", 1, size);
 	Cblacs_gridinfo(ctx, &nrow, &ncol, &myrow, &mycol);
 
 	// Descriptors for banded Matrix A
-	int* desca = new int[7];
+	desca = new int[7];
 	desca[0] = 501;
 	desca[1] = ctx;
 	desca[2] = N;
@@ -629,7 +592,7 @@ void LidDrivenCavity::Integrate()
 	desca[6] = 0;
 		
 	// Descriptors for RHS vector B
-	int* descb = new int[7];
+	descb = new int[7];
 	descb[0] = 502;
 	descb[1] = ctx;
 	descb[2] = N;
@@ -637,55 +600,20 @@ void LidDrivenCavity::Integrate()
 	descb[4] = 0;
 	descb[5] = NB;
 	descb[6] = 0;
-    	MPI_Barrier(MPI_COMM_WORLD);
-	cout << "constructing a banded" << endl;
-	// Constructing banded matrix A
-	double alpha = 2.0*(1.0/dx/dx + 1.0/dy/dy); // Coefficients of i,j
-	double beta_x = -1.0/dx/dx;		// Coefficients of i+/-1, j
-	double beta_y = -1.0/dy/dy;		// Coefficients of i/, j+/-1
-	
-	for(int i = 0 ; i<NB; i++){
-		if(rank*NB + i < N){
-			// Filling diagonal elements
-			A[i*lda+BW] = alpha;
-			// Filling superdiagonals of L/R Neighbours
-			if((i+rank*NB)%(Nx-2) == 0){
-				A[i*lda + BW -1] = 0;
-			}
-			else{
-				A[i*lda + BW -1] = beta_x;
-			}
-			// Finlling superdiagonals of U/D neighbours
-			if(rank*lda*NB + lda*i >= lda*(lda-1)){
-				A[i*lda] = beta_y;
-			}
-		}
+    
+	// RHS Mapping variables
+	if(rank == 0){
+		b_cart = new double[b_rank_L*size];
+		fill_n(b_cart, b_rank_L*size, 0.0);
 	}
-	MPI_Barrier(MPI_COMM_WORLD);
-/*	// Prints banded matrix A
-	if (rank == 5){
-		for(int i = 0; i < lda; i++){
-			for(int j = 0; j < NB; j++){
-				cout << setw(8) << A[i+lda*j] << setw(8);
-			}
-			cout << endl;
-		}
-	}
-*/
-	F77NAME(pdpbtrf) ('U', N, BW, A, JA, desca, AF, LAF, workf, lworkf, &info);
-	cout << "Info: " << info << endl;
-	cout << "Rank: " << rank << "	loc_nx: " << loc_nx << "	loc_ny: " << loc_ny << endl;
 
-	// Consolidating all of vorticity into b_rank vectors
-	int b_nx = ceil(double(Nx)/Py);
-       	int b_ny = ceil(double(Ny)/Px);
-	int b_scalx = b_nx;
-	int b_scaly = b_ny;
-	cout << "Im rank: " << rank << "	b_nx: " << b_nx << " 	b_ny: " << b_ny << endl;
-	int x_begin = 0;
-        int y_begin = 0;
-	int x_end = 0;
-	int y_end = 0;
+	b_scalx = b_nx;
+	b_scaly = b_ny;
+	x_begin = 0;
+    y_begin = 0;
+	x_end = 0;
+	y_end = 0;
+
 	if (nghbrs[LEFT] == -2){
 		x_begin = 1;
 	}
@@ -707,43 +635,64 @@ void LidDrivenCavity::Integrate()
 
 	b_scalx -= (x_end+x_begin);
 	b_scaly -= (y_end+y_begin);
-
-	int c = 0;
-	for(int j = y_begin; j < b_ny-y_end; j++){
-		for(int i = x_begin; i < b_nx-x_end; i++){
-			b_rank[c] = v[i + j*b_nx];	
-			c++;
-		}
-	}
-
-	double* b_cart;
-	if(rank == 0){
-		b_cart = new double[b_rank_L*size];
-	}
-	MPI_Barrier(MPI_COMM_WORLD);
-	// Storing vorticity of subdomains into global domain b_cart in catersian form
-	MPI_Gather(b_rank, b_rank_L, MPI_DOUBLE, b_cart, b_rank_L, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 	
-	if (rank == 0) {
-		for (int i = 0 ; i < size*b_rank_L; i++){
-			cout << "Index : " << i <<"	b_cart: " <<  b_cart[i] << endl;
-		}
-	}	
-	
-	// Converting global b vecotr b_cart into scalapack from b_scal
-	double* b_scal;
-	int* b_scal_nx;
-	int* b_scal_ny;
 	if (rank == 0){
 		b_scal_nx = new int[size];
 		b_scal_ny = new int[size];
 		b_scal = new double[NB*size];
 	}
+	MPI_Barrier(MPI_COMM_WORLD);
 	cout << "Im rank; " << rank<< "	scal_nx: " << b_scalx<< "	scal_ny: " << b_scaly << endl;
 	MPI_Barrier(MPI_COMM_WORLD);
 	MPI_Gather(&b_scalx, 1, MPI_INT, b_scal_nx, 1, MPI_INT, 0, MPI_COMM_WORLD);
 	MPI_Gather(&b_scaly, 1, MPI_INT, b_scal_ny, 1, MPI_INT, 0, MPI_COMM_WORLD);
 	MPI_Barrier(MPI_COMM_WORLD);
+}
+
+void LidDrivenCavity::CholFact(){
+
+	// Constructing banded matrix A
+	double alpha = 2.0*(1.0/dx/dx + 1.0/dy/dy); // Coefficients of i,j
+	double beta_x = -1.0/dx/dx;		// Coefficients of i+/-1, j
+	double beta_y = -1.0/dy/dy;		// Coefficients of i/, j+/-1
+	info = 0;
+
+	for(int i = 0 ; i<NB; i++){
+		if(rank*NB + i < N){
+			// Filling diagonal elements
+			A[i*lda+BW] = alpha;
+			// Filling superdiagonals of L/R Neighbours
+			if((i+rank*NB)%(Nx-2) == 0){
+				A[i*lda + BW -1] = 0;
+			}
+			else{
+				A[i*lda + BW -1] = beta_x;
+			}
+			// Finlling superdiagonals of U/D neighbours
+			if(rank*lda*NB + lda*i >= lda*(lda-1)){
+				A[i*lda] = beta_y;
+			}
+		}
+	}
+
+
+/*	// Prints banded matrix A
+	if (rank == 5){
+		for(int i = 0; i < lda; i++){
+			for(int j = 0; j < NB; j++){
+				cout << setw(8) << A[i+lda*j] << setw(8);
+			}
+			cout << endl;
+		}
+	}
+*/
+	MPI_Barrier(MPI_COMM_WORLD);
+	F77NAME(pdpbtrf) ('U', N, BW, A, JA, desca, AF, LAF, workf, lworkf, &info);
+	cout << "Im rank: " << rank << "	with fact info: " << info << endl;
+}
+	
+	
+void LidDrivenCavity::CartToScal(){
 	if (rank == 0){
 		int offset;
 		int rank_off = 0;
@@ -756,13 +705,11 @@ void LidDrivenCavity::Integrate()
 						i < b_scal_nx[j+c]*b_scal_ny[j+c] + offset - k*b_scal_nx[j] + rank_off;
 						i++){
 						b_scal[count] = b_cart[i];
-			
-						cout <<"Count: " << count <<"	B_scal: " << b_scal[count] <<  endl;
+
 						count++;
 					}
 					offset += b_rank_L;
 				}
-				cout << endl;
 			}
 			for(int i = 0; i<Py; i++){
 				rank_off += b_rank_L;
@@ -770,88 +717,69 @@ void LidDrivenCavity::Integrate()
 		}
 
 	}
+}
 
-	// Scattering into b for parallel solve
-	MPI_Scatter(&b_scal[NB*rank], NB, MPI_DOUBLE, b, NB, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+void LidDrivenCavity::ScalToCart(){
+	if (rank == 0){
+		int offset;
+		int rank_off = 0;
+		int count = 0;
+		for(int c = 0; c < size; c+=Py){	
+			for(int k = 0; k<b_scal_ny[c]; k++){
+				offset = 0;
+				for(int j = 0 ; j < Py; j++){
+					for(int i = b_scal_nx[j+c]*(b_scal_ny[j+c]-1) + offset - k*b_scal_nx[j] + rank_off;
+						i < b_scal_nx[j+c]*b_scal_ny[j+c] + offset - k*b_scal_nx[j] + rank_off;
+						i++){
+						b_cart[i] = b_scal[count];
+						count++;
+					}
+					offset += b_rank_L;
+				}
+			}
+			for(int i = 0; i<Py; i++){
+				rank_off += b_rank_L;
+			}
+		}
 
-	// Solving
-	F77NAME(pdpbtrs) ('U', N, BW, nrhs, A, JA, desca,b, IB, descb, AF, LAF, works, lworks, &info);
-	cout << "Im rank: " << rank << "	info: " << info << endl;
-	// Initialising properties of banded matrix A, to solve Ax = b
-	int x_off = 2;
-	int y_off = 2;
-	if (nghbrs[UP] == -2){
-		y_off += 1;
 	}
+}
+
+void LidDrivenCavity::MapSF(){
+	int x_start = 1;
+	int x_end = 1;
+	int y_start = 1;
+	int y_end = 1;
+	if(nghbrs[LEFT] == -2){
+		x_start += 1;
+	}
+	if(nghbrs[RIGHT] == -2){
+		x_end += 1;
+	}
+	if(nghbrs[UP] == -2){
+		y_end += 1;
+	}	
 	if (nghbrs[DOWN] == -2){
-		y_off += 1;
+		y_start += 1;
 	}
-	if (nghbrs[RIGHT] == -2){
-		x_off += 1;
-	}
-	if (nghbrs[LEFT] == -2){
-		x_off += 1;
-	}
-	internal_nodes = (loc_nx-x_off)*(loc_ny-y_off);
-	ku = loc_nx-x_off;			  // No. of super diagonals
-	int k = (ku+1)*internal_nodes;	  // Size of banded matrix (ku+kl+1)*N
-
-
-	int count = 1;
-	// a_banded holds matrix A in banded format
-	double* a_banded = new double[k];
-	fill_n(a_banded, k, 0.0);	
-	// rhs stores vector b for Ax = b
-	rhs = new double[internal_nodes];
-	fill_n(rhs, internal_nodes, 0.0);
-	// Try and Catch if dt is too large
-	double cond = Re*Lx/(Nx-1)*Ly/(Ny-1) / 4;
-	try{	
-		if(dt >= cond){throw std::out_of_range("");}
-	}
-	catch(std::out_of_range const &e){
-		if(rank == 0){		
-		cout << "dt: " << dt << 
-		", is too large and should be lesser than: " << cond << endl;
+	counter = 0;
+	for(int j = y_start; j < loc_ny-y_end; j++){
+		for(int i = x_start; i < loc_nx-x_end; i++){
+			s[i + j*loc_nx] = b_rank[counter];
+			counter++;
 		}
-	      return;	      
 	}
 
-	// Storing Elements of a_banded in banded format
-	a_banded[ku] = alpha;
-	for(int i=2*(ku+1)-1; i<k; i+=(ku+1)){
-		a_banded[i] = alpha;
-		// Storing beta_x
-		if(count % (loc_nx-x_off) != 0){
-			a_banded[i-1] = beta_x;
-		}
-		else{
-			a_banded[i-1] = 0.0;
-		}
-		// Storing beta_y
-		if(i > (ku+1)*(ku)){
-			a_banded[i-ku] = beta_y;
-		}
-        count++;
-	}
-	
-/*
-	// Printing A_banded for checking
-    if (rank == 0){
-        for(unsigned int i = 0; i < (ku+1) ; i++){
-            for(unsigned int j = 0; j < internal_nodes; j++){
-                cout << a_banded[i+j*(ku+1)] << " ";
-            }
-            cout << endl;
-        }
-        cout << endl;
-    }
-*/
-	// Caching Cholesky factorisation
-	F77NAME(dpbtrf) ('u', internal_nodes, ku, a_banded, ku+1, info);
+}
 
-	// Waiting for all processes before starting time-loop
-		
+// Integrating all the functions together
+void LidDrivenCavity::Integrate()
+{	
+	// Initialising Scalapack
+	ScalInit();
+	// Executing cholesky factorisation
+	MPI_Barrier(MPI_COMM_WORLD);
+	CholFact();
 	// Starting time loop
 	double t_elapse = 0.0;
 	while (t_elapse < T){	
@@ -862,115 +790,67 @@ void LidDrivenCavity::Integrate()
 		// Calculation of Interior Vorticity at time t AND t+dt
 		InteriorUpdate();
 
-        	// Solution of Poisson Problem to Compute Streamfunction at t + dt	
-		for (int i = 0; i < 5; i++){
-			
-			// Mapping inner vorticity and boundaries of streamfunction to RHS at t+dt
-			MapRHS();
+		// Consolidating all of vorticity into b_rank vectors
+		MapRHS();
+		// Gathering all subdomain RHS into b_cart
+		MPI_Barrier(MPI_COMM_WORLD);
+		MPI_Gather(b_rank, b_rank_L, MPI_DOUBLE, b_cart, b_rank_L, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+		/*  // Checks b_cart
+			if (rank == 0) {
+				for (int i = 0 ; i < size*b_rank_L; i++){
+					cout << "Index : " << i <<"	b_cart: " <<  b_cart[i] << endl;
+				}
+			}	
+		*/
+		// Converting global b vector b_cart into scalapack from b_scal
+		MPI_Barrier(MPI_COMM_WORLD);
+		CartToScal();
+		// Scattering into b for parallel solve
+		MPI_Barrier(MPI_COMM_WORLD);	
+		MPI_Scatter(b_scal, NB, MPI_DOUBLE, b, NB, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	
+		// Solving
+		MPI_Barrier(MPI_COMM_WORLD);
+		F77NAME(pdpbtrs) ('U', N, BW, nrhs, A, JA, desca,b, IB, descb, AF, LAF, works, lworks, &info);
+		//cout<<"Im rank: " << rank << " and solve info; " << info << endl;
 
-			// Solving
-			F77NAME(dpbtrs) ('U', internal_nodes, ku, 1, a_banded, ku+1, rhs, internal_nodes, info);
-
-			// Mapping rhs to inner streamfunction
-			iMapRHS();
-
-			// Updating streamfunction to neighbours
-			MPI_Barrier(MPI_COMM_WORLD);
-			Communicate();
+		// Gathering into b_scal
+		MPI_Barrier(MPI_COMM_WORLD);
+		MPI_Gather(b, NB, MPI_DOUBLE, b_scal, NB, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+/*		
+		if(rank == 0){
+			for(int i = 0 ; i < NB*size; i++){
+				//cout<< "Index: " << i << "	b[i]" << b[i] << endl;
+			}
 		}
-		
-		if(rank==0) cout << endl << endl << "Time-step: " << t_elapse << endl << endl;
-		t_elapse += dt;
-		MPI_Barrier(MPI_COMM_WORLD);		
-	}
+*/
+		// Converting back into b_cart form
+		MPI_Barrier(MPI_COMM_WORLD);
+		ScalToCart();
 
-	//SMatPrintRank(0);
+		// Scattering into local b's
+		MPI_Barrier(MPI_COMM_WORLD);
+		MPI_Scatter(b_cart, b_rank_L, MPI_DOUBLE, b_rank, b_rank_L, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+		// Storing into new streamfunction
+		MPI_Barrier(MPI_COMM_WORLD);
+		MapSF();
+
+
+		MPI_Barrier(MPI_COMM_WORLD);
+		Communicate();
+
+		t_elapse += dt;
+
+		MPI_Barrier(MPI_COMM_WORLD);
+		if(rank==0) cout << "Time: " << t_elapse << endl;	
+		//std::this_thread::sleep_for(std::chrono::seconds(3));
+	}
+	SMatPrintRank(0);	
+
 }
 
 void LidDrivenCavity::ExportSol(){
    
-    // Declaring a pointer of pointers to hold all values of stream function
-    double* vort_add = nullptr;
-    double* stream_add = nullptr;
-    int nnx = loc_nx - 2;
-    int nny = loc_ny - 2;
-    int* nx = nullptr;
-    int* ny = nullptr;
 
-    double* v_int = new double[nnx*nny];
-    double* s_int = new double[nnx*nny];
-
-    for(int i = 0; i< nnx; i++){
-        for(int j = 0; j<nny; j++){
-            v_int[i+j*nnx] = v[(i+1) + loc_nx*(j+1)];
-            s_int[i+j*nnx] = s[(i+1) + loc_nx*(j+1)];
-        }
-    }
-
-     if(rank==0){
-        nx = new int[size];
-        ny = new int[size];
-        vort_add = new double[Nx*Ny];
-        stream_add = new double[Nx*Ny];
-    }
-   
-    MPI_Barrier(MPI_COMM_WORLD);
-    MPI_Gather(&nnx, 1, MPI_INT, nx, 1, MPI_INT, 0, MPI_COMM_WORLD); 
-    MPI_Gather(&nny, 1, MPI_INT, ny, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    if(rank == 0){
-        for(int i = 0; i<size; i++){
-            cout << "Rank: " << i <<" has nx: " << nx[i] << " and ny: " << ny[i] <<  endl;
-        }
-    }
-    MPI_Barrier(MPI_COMM_WORLD);
-    MPI_Gather(v_int, nnx*nny, MPI_DOUBLE, vort_add, nnx*nny, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Gather(s_int, nnx*nny, MPI_DOUBLE, stream_add, nnx*nny, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Barrier(MPI_COMM_WORLD); 
-    if (rank == 0){
-       ofstream sOut("streamfunction.txt", ios::out | ios::trunc);
-       ofstream vOut("vorticity.txt", ios::out | ios::trunc);
-       sOut.precision(5);
-       vOut.precision(5);
- 
-        int offset = 0;
-        int rank_off = 0;
-        
-        // Moving stepping to the next rank row
-        for(int c = 0; c<size; c+=Py){
-             cout << "Index c: " << c << endl;
-            // Printing next lower row in the rank to the last in ny
-            for(int j = 0; j<ny[c]; j++){
-                cout << "Index j; " << j << endl;
-                cout << "j*nx[j]: " << j*nx[j] << endl;
-                offset = 0;
-                // Printing top row on the next rank to the last in Py
-                for(int k = 0; k < Py; k++){
-                    // Printing top row of rank = 0
-                    for(int i = offset + nx[k+c]*(ny[k+c]-1) - j*nx[k] + rank_off;
-                        i < offset + nx[k+c]*(ny[k+c]) - j*nx[k] + rank_off;
-                        i++){
-                        cout << "Index: i " << i <<",   SF: " << stream_add[i] << endl;
-                        vOut << setw(12) << vort_add[i] << setw(12);
-                        sOut << setw(12) << stream_add[i] << setw (12);
-                    }
-                offset += nx[k+c] * ny[k+c];
-                cout << "offset: " << offset<< endl << endl;
-                }
-            vOut << endl;
-            sOut << endl;
-            }
-            // Distance to offset to more to next rank row
-            for(int i = 0; i<Py; i++){
-                rank_off += nx[i]*ny[i];
-            }
-        }
-        vOut.close();
-        sOut.close();
-    }
-    
-    if(rank == 0){
-       for(int i=0; i<Nx*Ny; i++){
-            cout << "index i: " << i << "SF: " << stream_add[i] << endl;
-        }
-    }
 }
