@@ -2,6 +2,7 @@
 
 #include <string>
 #include <mpi.h>
+
 using namespace std;
 
 class LidDrivenCavity
@@ -26,7 +27,7 @@ public:
 	void BoundaryConditions();
 	void InteriorUpdate();
 	void Communicate();
-    void Integrate();
+    void Integrate(LidDrivenCavity &src);
     void ExportSol();
 	void MapRHS();
 	void iMapRHS();

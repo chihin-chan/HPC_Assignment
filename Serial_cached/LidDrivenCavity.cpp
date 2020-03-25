@@ -142,18 +142,18 @@ void LidDrivenCavity::Integrate()
 	for(unsigned int i=ku*(ku+1); i<k; i+=(Nx-1)){
 		a_banded[i] = beta_y;
 	}
-/*	
-	// Printing A_banded for checking
-	for(unsigned int i = 0; i < (ku+1) ; i++){
-		for(unsigned int j = 0; j < internal_nodes; j++){
-			cout << a_banded[i+j*(ku+1)] << " ";
-		}
-		cout << endl;
-	}
-*/
+	
 	// Caching Cholesky factorisation
 	F77NAME(dpbtrf) ('u', internal_nodes, ku, a_banded, ku+1, info);	
 	
+	// Printing A_banded for checking
+	for(unsigned int i = 0; i < (ku+1) ; i++){
+		for(unsigned int j = 0; j < internal_nodes; j++){
+			cout << setw(8) << a_banded[i+j*(ku+1)] << setw(8);
+		}
+		cout << endl;
+	}
+
 	// Starting time loop
 	while (t_elapse < T){
 		
@@ -200,10 +200,15 @@ void LidDrivenCavity::Integrate()
 				rhs[i+j*(Nx-2)] = v_new[(i+1)+(j+1)*Nx];
 			}
 		}
-		
 		// Solving Using Forward Substitution
 		F77NAME(dpbtrs) ('U', internal_nodes, ku, 1, a_banded, ku+1, rhs, internal_nodes, info);
-
+       
+        for(int i = 0; i<(Nx-2)*(Ny-2); i++){
+            if (i%(Nx-2) == 0 & i>0){
+                cout << endl;
+            }
+            cout << "Index i: " << i << " after solve b[i]" << rhs[i] << endl;
+        }
 		// Mapping Solution to Global Vector
 		for(unsigned int j = 0; j<Ny-2; j++){
 			for(unsigned int i = 0; i<Nx-2; i++){

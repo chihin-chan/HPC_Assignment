@@ -1,5 +1,6 @@
 #pragma once
 #include <iostream>
+#include "LidDrivenCavity.h"
 
 using namespace std;
 
@@ -8,22 +9,22 @@ class PoissonSolver
 public:
     PoissonSolver();
     ~PoissonSolver();
-    PoissonSolver(int nx, int ny, double ddx, double ddy);
-    void CholSolve(double* rhsrhs);
-
+	
+	void CholFact(LidDrivenCavity &src);
+	void CholSolve(double* rhs);
 private:
-    int Nx;
-    int Ny;
-    double dx;
-    double dy;
-    double* a_banded;
-   
+
 	int internal_nodes;
 	int ku;
+	int x_off;
+	int y_off;
 	int k;
-	double alpha; 
+	int info;
+	double alpha;
 	double beta_x;
 	double beta_y;
-	int info;
 
+	double* a_banded;
+	double* rhs;
+	
 };

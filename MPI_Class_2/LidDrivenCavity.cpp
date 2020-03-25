@@ -7,7 +7,6 @@
 #include <fstream>
 #include <iomanip>
 #include <mpi.h>
-#include <thread>
 
 #define UP    0
 #define DOWN  1
@@ -15,33 +14,6 @@
 #define RIGHT 3
 #define sf	  0
 #define vort  1
-#define F77NAME(x) x##_
-extern "C" {
-
-	void Cblacs_pinfo(int*, int*);
-	void Cblacs_get(int, int, int*);
-	void Cblacs_gridinit(int*, const char*, int, int);
-	void Cblacs_gridinfo(int , int*, int*, int*, int*);
-	void Cblacs_gridexit(int);
-	void Cblacs_barrier(int, const char*);
-	   
-	void F77NAME(pdpbtrf)(const char& UPLO, const int& N, const int& BW,
-						  double* A,  const int& JA,  int* DESCA,
-						  double* AF, int& LAF, double* WORK, 
-						  const int& LWORK, int* INFO);				             		 
-		        		 
-	 void F77NAME(pdpbtrs)(const char& UPLO, const int& N, const int& BW,
-						  const int& NRHS, double* A,  const int& JA,  
-						  int* DESCA, double* B,  const int& IB, 
-						  int* DESCB, double* AF, int& LAF, 
-						  double* WORK, const int& LWORK, int* INFO);     
-	
-	void F77NAME(dpbtrf) (const char& UPLO, const int& n, const int& kd,
-		       	      const double* ab, const int& LDAB, int& info);
-	void F77NAME(dpbtrs) (const char& UPLO, const int& n, const int& KD,
-			      const int& nrhs, const double* AB, const int& ldab,
-			      const double* b, const int& ldb, int& info);
-}
 
 using namespace std;
 
@@ -254,6 +226,11 @@ void LidDrivenCavity::Initialise()
 	// Calculating Grid Spacing
 	dx = double(Lx) / double((Nx-1.0));
 	dy = double(Ly) / double((Ny-1.0));
+	
+	// Prints complete initialisation!
+	if (rank == 0){
+		cout << endl << "Initialisation Complete!" << endl;
+	}
 	MPI_Barrier(MPI_COMM_WORLD);
 	
 }
@@ -497,10 +474,12 @@ void LidDrivenCavity::InteriorUpdate()
 
 // Function that extracts the inner nodes of vorticity(w) into vector b of linear problem Ax=b	
 void LidDrivenCavity::MapRHS(){
+
 	int x_off = 2;
 	int y_off = 2;
 	int x_start = 1;
 	int y_start = 1;
+
 	if (nghbrs[UP] == -2){
 		y_off += 1;
 	}
@@ -572,92 +551,26 @@ void LidDrivenCavity::iMapRHS(){
 }
 
 // Integrating all the functions together
-void LidDrivenCavity::Integrate()
+void LidDrivenCavity::Integrate(LidDrivenCavity &src)
 {	
-
-	int internal_nodes;
-	int ku;
-	cout << "Rank: " << rank << "	loc_nx: " << loc_nx << "	loc_ny: " << loc_ny << endl;
-
-	// Initialising properties of banded matrix A, to solve Ax = b
-	int x_off = 2;
-	int y_off = 2;
-	if (nghbrs[UP] == -2){
-		y_off += 1;
-	}
-	if (nghbrs[DOWN] == -2){
-		y_off += 1;
-	}
-	if (nghbrs[RIGHT] == -2){
-		x_off += 1;
-	}
-	if (nghbrs[LEFT] == -2){
-		x_off += 1;
-	}
-	internal_nodes = (loc_nx-x_off)*(loc_ny-y_off);
-	ku = loc_nx-x_off;			  // No. of super diagonals
-	int k = (ku+1)*internal_nodes;	  // Size of banded matrix (ku+kl+1)*N
-	double alpha = 2.0*(1.0/dx/dx + 1.0/dy/dy); // Coefficients of i,j
-	double beta_x = -1.0/dx/dx;		// Coefficients of i+/-1, j
-	double beta_y = -1.0/dy/dy;		// Coefficients of i/, j+/-1
-
-	int info;
-	int count = 1;
-	// a_banded holds matrix A in banded format
-	double* a_banded = new double[k];
-	fill_n(a_banded, k, 0.0);	
-	// rhs stores vector b for Ax = b
-	rhs = new double[internal_nodes];
-	fill_n(rhs, internal_nodes, 0.0);
 	// Try and Catch if dt is too large
 	double cond = Re*Lx/(Nx-1)*Ly/(Ny-1) / 4;
 	try{	
 		if(dt >= cond){throw std::out_of_range("");}
 	}
 	catch(std::out_of_range const &e){
-		if(rank == 0){		
+		if (rank==0){
 		cout << "dt: " << dt << 
 		", is too large and should be lesser than: " << cond << endl;
 		}
-	      return;	      
+	      return;   
 	}
 
-	// Storing Elements of a_banded in banded format
-	a_banded[ku] = alpha;
-	for(int i=2*(ku+1)-1; i<k; i+=(ku+1)){
-		a_banded[i] = alpha;
-		// Storing beta_x
-		if(count % (loc_nx-x_off) != 0){
-			a_banded[i-1] = beta_x;
-		}
-		else{
-			a_banded[i-1] = 0.0;
-		}
-		// Storing beta_y
-		if(i > (ku+1)*(ku)){
-			a_banded[i-ku] = beta_y;
-		}
-        count++;
-	}
+
+	// Calling Poisson Solver for cholesky factorising caching
+	PoissonSolver Cholesky;
+	Cholesky.CholFact(src);
 	
-/*
-	// Printing A_banded for checking
-    if (rank == 0){
-        for(unsigned int i = 0; i < (ku+1) ; i++){
-            for(unsigned int j = 0; j < internal_nodes; j++){
-                cout << a_banded[i+j*(ku+1)] << " ";
-            }
-            cout << endl;
-        }
-        cout << endl;
-    }
-*/
-	// Caching Cholesky factorisation
-	F77NAME(dpbtrf) ('u', internal_nodes, ku, a_banded, ku+1, info);
-
-	// Waiting for all processes before starting time-loop
-		
-	cout << "Rank: " << rank << "  starting time loop" << endl;	
 	// Starting time loop
 	double t_elapse = 0.0;
 	while (t_elapse < T){	
@@ -667,14 +580,14 @@ void LidDrivenCavity::Integrate()
 		// Calculation of Interior Vorticity at time t AND t+dt
 		InteriorUpdate();
 
-        	// Solution of Poisson Problem to Compute Streamfunction at t + dt	
+        // Solution of Poisson Problem to Compute Streamfunction at t + dt	
 		for (int i = 0; i < 5; i++){
 			
 			// Mapping inner vorticity and boundaries of streamfunction to RHS at t+dt
 			MapRHS();
 
 			// Solving
-			F77NAME(dpbtrs) ('U', internal_nodes, ku, 1, a_banded, ku+1, rhs, internal_nodes, info);
+			Cholesky.CholSolve(rhs);
 
 			// Mapping rhs to inner streamfunction
 			iMapRHS();
@@ -721,11 +634,7 @@ void LidDrivenCavity::ExportSol(){
     MPI_Barrier(MPI_COMM_WORLD);
     MPI_Gather(&nnx, 1, MPI_INT, nx, 1, MPI_INT, 0, MPI_COMM_WORLD); 
     MPI_Gather(&nny, 1, MPI_INT, ny, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    if(rank == 0){
-        for(int i = 0; i<size; i++){
-            cout << "Rank: " << i <<" has nx: " << nx[i] << " and ny: " << ny[i] <<  endl;
-        }
-    }
+
     MPI_Barrier(MPI_COMM_WORLD);
     MPI_Gather(v_int, nnx*nny, MPI_DOUBLE, vort_add, nnx*nny, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     MPI_Gather(s_int, nnx*nny, MPI_DOUBLE, stream_add, nnx*nny, MPI_DOUBLE, 0, MPI_COMM_WORLD);
@@ -770,11 +679,5 @@ void LidDrivenCavity::ExportSol(){
         }
         vOut.close();
         sOut.close();
-    }
-    
-    if(rank == 0){
-       for(int i=0; i<Nx*Ny; i++){
-            cout << "index i: " << i << "SF: " << stream_add[i] << endl;
-        }
     }
 }

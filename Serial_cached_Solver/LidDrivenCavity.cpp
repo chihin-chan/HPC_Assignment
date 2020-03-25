@@ -94,8 +94,9 @@ void LidDrivenCavity::Integrate()
 {
 	double U = 1.0;
 	double t_elapse = 0.0;
-	double norm;
-    int count;
+	double norm_s;
+    double norm_v;
+    int count=0;
 	
 	// rhs stores vector b for Ax = b
 	double* rhs = new double[(Nx-2)*(Ny-2)];
@@ -169,21 +170,36 @@ void LidDrivenCavity::Integrate()
 			}
 		}
 		// Calculating 2-norm of solution difference
-		norm = 0.0;
-		for(unsigned int i = 0 ; i<Nx*Ny; i++){
-			norm += (s_new[i] - s[i])*(s_new[i]-s[i]);
+		norm_s = 0.0;
+		for(int i = 0 ; i<Nx*Ny; i++){
+			norm_s += (s_new[i] - s[i])*(s_new[i]-s[i]);
 		}
-		cout << "2-Norm: " << sqrt(norm) << endl;
+        norm_v = 0.0;
+        for(unsigned int i = 1; i<Nx-1; i++){
+            for(unsigned int j = 1; j<Ny-1; j++){
+                norm_v += (v_new[i+j*Nx] - v[i+j*Nx]) * (v_new[i+j*Nx] - v[i+j*Nx]);
+            }
+        }
+		cout << "Streamfunction 2-Norm: " << sqrt(norm_s) << endl;
+        cout << "Vorticity 2-norm: " <<sqrt(norm_v) << endl;
 		// Copying streamfunction at n+1 back into n for next time iteration 
 		cblas_dcopy(Nx*Ny, s_new, 1, s, 1);
 		t_elapse+= dt;
-		cout << "Time elapsed: " << t_elapse<< endl<< endl;
+        count ++;
+		cout << "Time elapsed: " << t_elapse<< endl;
+        cout << "Iteration: " << count << endl <<endl;
+        // Tolerance Criteria
+        if(norm_s < 1e-16 & norm_v < 1e-16){
+            cout << "Tolerance Criteria of 1e-8 reached" << endl;
+            cout << "Solver Completed" << endl;
+            break;
+        }
     }
     delete[] rhs;
 }
 
 void LidDrivenCavity::ExportSol(){
-	ofstream sOut("streamfunction.txt", ios::out | ios::trunc);
+	ofstream sOut("streamfunction_Lx"+to_string(int(Lx))+"Ly"+to_string(int(Ly))+".txt", ios::out | ios::trunc);
 	sOut.precision(5);
 	sOut << setw(15) << "x"
 	     << setw(15) << "y"
@@ -198,7 +214,7 @@ void LidDrivenCavity::ExportSol(){
 	}
 	sOut.close();
 	
-    ofstream vOut("vorticity.txt", ios::out | ios::trunc);
+    ofstream vOut("vorticity_Lx"+to_string(int(Lx))+"Ly"+to_string(int(Ly))+".txt", ios::out | ios::trunc);
 	vOut.precision(5);
 	vOut << setw(15) << "x"
 	     << setw(15) << "y"

@@ -1,13 +1,16 @@
 #include <iostream>
 #include <boost/program_options.hpp>
+#include <mpi.h>
+#include "LidDrivenCavity.h"
+
 using namespace std;
 namespace po = boost::program_options;
-#include "LidDrivenCavity.h"
-#include <mpi.h>
 
 int main(int argc, char **argv)
 {	
-	int s, r;
+	int s;			// No. of processors
+	int r;			// Rank
+
 	// Parsing Values from Command Line
 	po::options_description desc("Allowed options");
 	desc.add_options()
@@ -22,36 +25,28 @@ int main(int argc, char **argv)
 		("T", po::value<double>(), "Final Time")
 		("Re", po::value<double>(), "Reynolds Number");
 	
+	// Parsing Variables
 	po::variables_map vm;
 	po::store(po::parse_command_line(argc, argv, desc), vm);
 	po::notify(vm);   
 	
+	// Help menu
 	if (vm.count("help")) {
     	cout << desc << "\n";
     	return 1;
 	}
+
 	// Initialising MPI
-    MPI_Init(&argc, &argv);
-	
+	MPI_Init(&argc, &argv);
+		
 	// Retrieving MPI Size
 	MPI_Comm_size(MPI_COMM_WORLD, &s);
 
 	// Retreving Rank
-    MPI_Comm_rank(MPI_COMM_WORLD, &r);
+	MPI_Comm_rank(MPI_COMM_WORLD, &r);
 
-	// Checking if NxNy matches number of processes
-	try{
-		if(vm["Px"].as<int>() * vm["Py"].as<int>() != s){
-			throw std::out_of_range("");
-		}
-	}
-	catch(std::out_of_range const &e){
-		if (r==0){
-			cout << "Invalid Number of Processes requested" << endl;
-		}
-	}
-    // Create a new instance of the LidDrivenCavity class
-    LidDrivenCavity* solver = new LidDrivenCavity();
+	// Create a new instance of the LidDrivenCavity class
+	LidDrivenCavity* solver = new LidDrivenCavity();
 	solver->SetDomainSize(vm["Lx"].as<double>(), vm["Ly"].as<double>());
 	solver->SetGridSize(vm["Nx"].as<int>(), vm["Ny"].as<int>());
 	solver->SetPartitionSize(vm["Px"].as<int>(), vm["Py"].as<int>());
@@ -60,15 +55,16 @@ int main(int argc, char **argv)
 	solver->SetReynoldsNumber(vm["Re"].as<double>());
 	solver->GetRank(r);
 	solver->GetSize(s);
-    // Configure the solver here...
+	// Configure the solver here...
 	solver->Initialise();
-	
-    // Run the solver
-    solver->Integrate();
+		
+	// Run the solver
+	solver->Integrate(*solver);
 
 	// Export Results
-	solver->ExportSol();
+	// solver->ExportSol();
 	
 	MPI_Finalize();
+
 	return 0;
 }

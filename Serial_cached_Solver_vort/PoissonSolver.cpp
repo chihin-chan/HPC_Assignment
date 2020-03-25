@@ -88,6 +88,4 @@ PoissonSolver::~PoissonSolver(){
 
 void PoissonSolver::CholSolve(double* rhsrhs){
     F77NAME(dpbtrs) ('U', internal_nodes, ku, 1, a_banded, ku+1, rhsrhs, internal_nodes, info);
-    cout << "Cholesky Solver was called" << endl;
-    cout << "Info: " << info << endl;
 }
